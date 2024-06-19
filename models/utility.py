@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
+from pytz import timezone
 from math import sin, cos, pi
 from calendar import monthrange
 import pickle
@@ -13,11 +14,11 @@ from sklearn.neighbors import LocalOutlierFactor
 from solutil import dbqueries as db
 
 
-def get_dates_from_config(str_model:str):
+def get_dates_from_config(str_model: str):
     """
-    Method to load parameters for load_input.
-    :param str_model:
-    :return:
+    Method to load date parameters for load_input.
+    :param str_model: Model name as used in section header of json config
+    :return: date dict containing date_from and date_to parameters in datetime format.
     """
     # Load config from directory
     with open(Path("config/config.json"), "r") as jsonfile:
@@ -37,8 +38,39 @@ def get_dates_from_config(str_model:str):
     return date_dict
 
 
+def get_params_from_config(function: str, str_model: str):
+    # Load config from directory
+    with open(Path("config/config.json"), "r") as jsonfile:
+        config = json.load(jsonfile)
+
+    # Extract model config
+    model_config = config['model'][str_model]
+
+    # Extract parameters depending on function
+    param_dict = {}
+    match function:
+        case 'dates':
+            date_from_str = model_config['parameters']['training']['train_start']
+            date_to_diff = int(model_config['parameters']['training']['last_day_train'])
+
+            date_from = datetime.strptime(date_from_str, '%d.%m.%Y')
+            date_to = datetime.now() + timedelta(days=date_to_diff)
+            date_to_clean = date_to.replace(hour=0, minute=0, second=0, microsecond=0)
+
+            param_dict['date_from'] = date_from
+            param_dict['date_to'] = date_to_clean
+        case 'model_train':
+            param_dict['n_patience'] = model_config['parameters']['architecture']['n_patience']
+            param_dict['n_epochs'] = model_config['parameters']['architecture']['n_epochs']
+            param_dict['n_batch_size'] = model_config['parameters']['architecture']['n_batch_size']
+        case _:
+            raise ValueError('Provided function name is not available.')
+
+    return param_dict
+
+
 def load_input(str_model: str, date_from, date_to, n_timestep: int = None, use_day: bool = True,
-               use_day_var:str='useday_1d_lag0', mandant_user: str = None, mandant_pwd: str = None,
+               use_day_var: str = 'useday_1d_lag0', mandant_user: str = None, mandant_pwd: str = None,
                mandant_addr: str = None):
     """
     Load feature matrix for machine learning models according to variable specification in config.json, including
@@ -122,7 +154,7 @@ def load_input(str_model: str, date_from, date_to, n_timestep: int = None, use_d
             date_index = pd.date_range(start=date_from_mod - timedelta(days=1),
                                        end=date_to_mod + timedelta(days=1),
                                        tz='Etc/GMT-1',
-                                       freq=f'{24//n_timestep}h')
+                                       freq=f'{24 // n_timestep}h')
             df_collect = pd.DataFrame(index=date_index)
 
         # Conditional Data Import from Belvis
@@ -133,20 +165,21 @@ def load_input(str_model: str, date_from, date_to, n_timestep: int = None, use_d
                                                  mandant_user, mandant_pwd, mandant_addr)
 
                 # Resample hourly data
-                resampled_ts = loaded_ts.resample(timedelta(hours=24//n_timestep)).mean()
+                resampled_ts = loaded_ts.resample(timedelta(hours=24 // n_timestep)).mean()
             case '1d':
                 # Load daily data
                 str_table = model_config['inputs'][input_variable]['str_table']
                 loaded_ts = db.get_timeseries_1d(ts_id_i, date_from_mod, date_to_mod,
-                                     mandant_user, mandant_pwd, mandant_addr, str_table)
-                loaded_ts = loaded_ts['value'] # no dynamic col_name required because no option to change -> hardcopy 'value' ok
+                                                 mandant_user, mandant_pwd, mandant_addr, str_table)
+                loaded_ts = loaded_ts[
+                    'value']  # no dynamic col_name required because no option to change -> hardcopy 'value' ok
 
                 # Resample daily data
-                resampled_ts = loaded_ts.resample(timedelta(hours=24//n_timestep)).ffill()
+                resampled_ts = loaded_ts.resample(timedelta(hours=24 // n_timestep)).ffill()
             case '15min':
                 # Load daily data
                 loaded_ts = db.get_timeseries_15min(ts_id_i, date_from_mod, date_to_mod,
-                                                 mandant_user, mandant_pwd, mandant_addr)
+                                                    mandant_user, mandant_pwd, mandant_addr)
 
                 # Resample hourly data
                 resampled_ts = loaded_ts.resample(timedelta(hours=24 // n_timestep)).mean()
@@ -177,15 +210,23 @@ def load_input(str_model: str, date_from, date_to, n_timestep: int = None, use_d
     df_collect.dropna(how='all', inplace=True)
     df_collect.ffill(inplace=True)
 
-
     return df_collect
 
 
 # Outlier Detection
-def handle_outliers(df, contamination='auto', window_length:int=6, alpha:float=None):
-
+def handle_outliers(df, contamination='auto', window_length: int = 6, alpha: float = None):
+    """
+    Detect outliers based on Local Outlier Factor replace these values with exponential
+    weighted moving average of x previous values.
+    :param df: Dataframe containing to-be-checked values. Algo will loop through all
+               columns of df.
+    :param contamination: Contamination mode for LocalOutlierFactor class. Default is 'auto'.
+    :param window_length: EWM average window length for outlier imputation.
+    :param alpha: Fading parameter for ewm computation. Defaults to 2/(x+1).
+    :return: Dataframe with corrected outliers.
+    """
     if alpha is None:
-        alpha = 2 / (window_length + 1) # Rule of thumb
+        alpha = 2 / (window_length + 1)  # Rule of thumb
 
     lof = LocalOutlierFactor(contamination=contamination)
 
@@ -194,11 +235,11 @@ def handle_outliers(df, contamination='auto', window_length:int=6, alpha:float=N
 
     for variable in df.columns:
         print(f'Variable {variable}')
-        outlier_preds = lof.fit_predict(df[variable].values.reshape(-1,1))
+        outlier_preds = lof.fit_predict(df[variable].values.reshape(-1, 1))
         mask = outlier_preds == -1
         variable_mask = df[variable][mask]
 
-        # Impute outliers using EMWA
+        # Impute outliers
         for outlier_i in variable_mask.index:
             # Get EMWA range index
             # date_index = df[variable].index[outlier_i]
@@ -214,7 +255,7 @@ def handle_outliers(df, contamination='auto', window_length:int=6, alpha:float=N
 
 
 # Prepare Inputs for ML Model
-def scale_with_minmax(df_features, str_model:str, idx_train:bool=True):
+def scale_with_minmax(df_features, str_model: str, idx_train: bool = True):
     # Perform MinMax Scaling
     if idx_train:
         # Get scaling parameters from hist data
@@ -241,8 +282,7 @@ def scale_with_minmax(df_features, str_model:str, idx_train:bool=True):
 
 
 # Inverse transform scaling
-def inverse_transform_minmax(df_scaled, str_model:str):
-
+def inverse_transform_minmax(df_scaled, str_model: str, attributes):
     # Load attributes
     with open(f'models//attributes//{str_model}_min_col.pkl', 'rb') as file:
         min_col = pickle.load(file)
@@ -250,13 +290,16 @@ def inverse_transform_minmax(df_scaled, str_model:str):
         scale_factor = pickle.load(file)
 
     # Rescale dataframe
-    df_rescaled = df_scaled * scale_factor + min_col
+    if len(attributes) <= 1:
+        df_rescaled = df_scaled * scale_factor[attributes].values[0] + min_col[attributes].values[0]
+    else:
+        df_rescaled = df_scaled * scale_factor[attributes] + min_col[attributes]
 
     return df_rescaled
 
 
 # Split training / test set
-def split_dataframe(df_features, target_var:str=None, train_share:float=0.7, **kwargs):
+def split_dataframe(df_features, target_var: str = None, train_share: float = 0.7, **kwargs):
     """
     Separate target variable from feature matrix and perform train-test-split.
 
@@ -280,8 +323,26 @@ def split_dataframe(df_features, target_var:str=None, train_share:float=0.7, **k
 
 
 # Sequencing for LSTM
-def generate_sequences(df, target_var:str, n_lookback:int, n_ahead:int, drop_target:bool=True,
-                       train_share:float=0.7):
+def generate_sequences(df, target_var: str, n_lookback: int, n_ahead: int, n_offset:int=0,
+                       drop_target: bool = True, continuous:bool=True, n_timestep:int=6,
+                       train_share: float = 0.7):
+    """
+    Generate sequence arrays for LSTM and perform train-test-split.
+    :param df: Dataframe containing x and y features.
+    :param target_var: Column name of target variable y in df.
+    :param n_lookback: Sequence length of features x.
+    :param n_ahead: Sequence length of target variable y.
+    :param n_offset: Offset interval between feature and target sequence as expressed in number of timesteps.
+                     Defaults to 0.
+    :param drop_target: Boolean indicator to drop target variable from x sample.
+                        Defaults to True.
+    :param continuous: Boolean indicator whether sequencing should be continuous or step-wise. Step-wise can
+                       be used if the prediction should be only once a day for the entire day ahead.
+    :param n_timestep: Number of timesteps in a day. Used to ensure only one sequence per day occurring.
+    :param train_share: Train-test split threshold; train_share = % of dataset included
+                        in train sample.
+    :return: Tuple containing x_train, x_test, y_train, y_test.
+    """
     # Separate target variable
     df_y = df[target_var]
     df_x = df.drop(columns=[target_var]) if drop_target else df
@@ -293,217 +354,65 @@ def generate_sequences(df, target_var:str, n_lookback:int, n_ahead:int, drop_tar
     df_y_numpy = df_y.to_numpy()
 
     # Create sequences
-    for timestep in range(n_lookback, df_x_numpy.shape[0] - n_ahead):
-
+    for timestep in range(n_lookback, df_x_numpy.shape[0] - n_ahead - n_offset):
         # Slice df into series
-        x_sequence_t = df_x_numpy[timestep-n_lookback:timestep]
-        y_sequence_t = df_y_numpy[timestep:timestep+n_ahead]
+        x_sequence_t = df_x_numpy[timestep - n_lookback:timestep]
+        y_sequence_t = df_y_numpy[timestep + n_offset:timestep + n_ahead + n_offset]
 
         # Assign series to strawmans
         x_list.append(x_sequence_t)
         y_list.append(y_sequence_t)
 
+    # Filter out in case of discontinuous sequences
+    if not continuous:
+        x_list = x_list[::n_timestep]
+        y_list = y_list[::n_timestep]
+
     # Train Test Split & Numpy Conversion
-    x_train, x_test = train_test_split(np.array(x_list), train_size=train_share, shuffle=False)
-    y_train, y_test = train_test_split(np.array(y_list), train_size=train_share, shuffle=False)
+    x_train, x_test, y_train, y_test = train_test_split(np.array(x_list), np.array(y_list),
+                                                        train_size=train_share, shuffle=False)
 
     return x_train, x_test, y_train, y_test
 
 
-# def load_input2(str_model:str, date_from, date_to, n_timestep:int=None, idx_train:bool=True,
-#                mandant_user:str=None, mandant_pwd:str=None, mandant_addr:str=None):
-#
-#     # Load Environment Variables
-#     if mandant_user is None:
-#         env_vars = db.get_env_variables('EPAG_ENERGIE')
-#         mandant_user = env_vars['mandant_user']
-#         mandant_pwd = env_vars['mandant_pwd']
-#         mandant_addr = env_vars['mandant_addr']
-#
-#     # Config Parser
-#     config = configparser.ConfigParser()
-#     config.read('config//model_config.ini')
-#
-#     # Get n_timestep from config
-#     if n_timestep is None:
-#         n_timestep = int(config.get(str_model, 'n_timestep'))
-#
-#     # Load Timeseries --------------------------------------------------------------------------------------------------
-#
-#     # Tagessumme Abfluss (1d)
-#     ts_base_1d_id = int(config.get(str_model, 'base_1d'))
-#     ts_base_1d = db.get_timeseries_1d(ts_base_1d_id, date_from - timedelta(days=1), date_to,
-#                                       mandant_user, mandant_pwd, mandant_addr, str_table='meanvalues')
-#
-#     # Tag verwenden (1d)
-#     ts_useday_1d_id = int(config.get(str_model, 'useday_1d'))
-#     ts_useday_1d = db.get_timeseries_1d(ts_useday_1d_id, date_from, date_to + timedelta(days=1),
-#                                         mandant_user, mandant_pwd, mandant_addr, str_table='meanvalues')
-#
-#     # Temperatur (1h)
-#     ts_temp_1h_id = int(config.get(str_model, 'temp_1h'))
-#     ts_temp_1h = db.get_timeseries_1h(ts_temp_1h_id, date_from - timedelta(days=1), date_to,
-#                                       mandant_user, mandant_pwd, mandant_addr)
-#
-#     # Globalstrahlung (1h)
-#     ts_glob_1h_id = int(config.get(str_model, 'glob_1h'))
-#     ts_glob_1h = db.get_timeseries_1h(ts_glob_1h_id, date_from - timedelta(days=1), date_to,
-#                                       mandant_user, mandant_pwd, mandant_addr)
-#
-#     # Niederschlag (1h)
-#     ts_rain_1h_id = int(config.get(str_model, 'rain_1h'))
-#     ts_rain_1h = db.get_timeseries_1h(ts_rain_1h_id, date_from - timedelta(days=1), date_to,
-#                                       mandant_user, mandant_pwd, mandant_addr)
-#
-#     # Bodenfeuchtigkeit (1h)
-#     ts_bf15_1h_id = int(config.get(str_model, 'bf15_1h'))
-#     ts_bf15_1h = db.get_timeseries_1h(ts_bf15_1h_id, date_from - timedelta(days=1), date_to,
-#                                       mandant_user, mandant_pwd, mandant_addr)
-#
-#     # Schneeschmelzmenge (1h)
-#     ts_schmelz_1h_id = int(config.get(str_model, 'schmelz_1h'))
-#     ts_schmelz_1h = db.get_timeseries_1h(ts_schmelz_1h_id, date_from - timedelta(days=1), date_to,
-#                                       mandant_user, mandant_pwd, mandant_addr)
-#
-#     # Concatenate Input Variables --------------------------------------------------------------------------------------
-#
-#     # Tag des Jahres Sinus
-#     input_1_s = ts_useday_1d.resample(timedelta(hours=24 // n_timestep)).ffill()
-#     input_1_s = input_1_s.iloc[:-1]
-#     input_1_s['value'] = [sin(element.dayofyear / (monthrange(element.year, 2)[1] + 337) * 2 * pi) for element in
-#                           input_1_s.index]
-#     input_1_s.name = 'yearday_sin'
-#
-#     # Tag des Jahres Cosinus
-#     input_1_c = ts_useday_1d.resample(timedelta(hours=24 // n_timestep)).ffill()
-#     input_1_c = input_1_c.iloc[:-1]
-#     input_1_c['value'] = [cos(element.dayofyear / (monthrange(element.year, 2)[1] + 337) * 2 * pi) for element in
-#                           input_1_c.index]
-#     input_1_c.name = 'yearday_cos'
-#
-#     # Tag für Training verwenden
-#     input_3 = ts_useday_1d.resample(timedelta(hours=24 // n_timestep)).ffill()
-#     input_3 = input_3.iloc[:-1]
-#     input_3.columns = 'useday'
-#
-#     # Abfluss Vortag
-#     input_4 = ts_base_1d.resample(timedelta(hours=24 // n_timestep)).ffill()
-#     input_4 = input_4.iloc[:-1]
-#     input_4.name = 'base_day_-1'
-#     input_4.index = input_1_s.index
-#     input_4 = input_4.fillna(0)
-#
-#     # Temperatur -1
-#     input_5 = ts_temp_1h.resample(timedelta(hours=24 // n_timestep)).mean()
-#     input_5 = input_5.iloc[n_timestep - 1:-1]
-#     input_5.index = input_1_s.index
-#     input_5.name = 'temp-1'
-#
-#     # Globalstrahlung -1
-#     input_6 = ts_glob_1h.resample(timedelta(hours=24 // n_timestep)).mean()
-#     input_6 = input_6.iloc[n_timestep - 1:-1]
-#     input_6.index = input_1_s.index
-#     input_6.name = 'glob-1'
-#
-#     # Globalstrahlung -2
-#     input_6a = ts_glob_1h.resample(timedelta(hours=24 // n_timestep)).mean()
-#     input_6a = input_6a.iloc[n_timestep - 2:-2]
-#     input_6a.index = input_1_s.index
-#     input_6a.name = 'glob-2'
-#
-#     # Globalstrahlung -3
-#     input_6b = ts_glob_1h.resample(timedelta(hours=24 // n_timestep)).mean()
-#     input_6b = input_6b.iloc[n_timestep - 3:-3]
-#     input_6b.index = input_1_s.index
-#     input_6b.name = 'glob-3'
-#
-#     # Niederschlag -1
-#     input_7 = ts_rain_1h.resample(timedelta(hours=24 // n_timestep)).mean()
-#     input_7 = input_7.iloc[n_timestep - 1:-1]
-#     input_7.index = input_1_s.index
-#     input_7.name = 'rain-1'
-#
-#     # Niederschlag -2
-#     input_7a = ts_rain_1h.resample(timedelta(hours=24 // n_timestep)).mean()
-#     input_7a = input_7a.iloc[n_timestep - 2:-2]
-#     input_7a.index = input_1_s.index
-#     input_7a.name = 'rain-2'
-#
-#     # Niederschlag -3
-#     input_7b = ts_rain_1h.resample(timedelta(hours=24 // n_timestep)).mean()
-#     input_7b = input_7b.iloc[n_timestep - 3:-3]
-#     input_7b.index = input_1_s.index
-#     input_7b.name = 'rain-3'
-#
-#     # Bodenfeuchtigkeit15
-#     input_8 = ts_bf15_1h.resample(timedelta(hours=24 // n_timestep)).mean()
-#     input_8 = input_8.iloc[n_timestep:]
-#     input_8.index = input_1_s.index
-#     input_8.name = 'bf15'
-#
-#     # Bodenfeuchtigkeit15 -1
-#     input_8a = ts_bf15_1h.resample(timedelta(hours=24 // n_timestep)).mean()
-#     input_8a = input_8a.iloc[n_timestep - 1:-1]
-#     input_8a.index = input_1_s.index
-#     input_8a.name = 'bf15-1'
-#
-#     # Bodenfeuchtigkeit15 -2
-#     input_8b = ts_bf15_1h.resample(timedelta(hours=24 // n_timestep)).mean()
-#     input_8b = input_8b.iloc[n_timestep - 2:-2]
-#     input_8b.index = input_1_s.index
-#     input_8b.name = 'bf15-2'
-#
-#     # Bodenfeuchtigkeit15 -3
-#     input_8c = ts_bf15_1h.resample(timedelta(hours=24 // n_timestep)).mean()
-#     input_8c = input_8c.iloc[n_timestep - 3:-3]
-#     input_8c.index = input_1_s.index
-#     input_8c.name = 'bf15-3'
-#
-#     # Schneeschmelzmenge -1
-#     input_9 = ts_schmelz_1h.resample(timedelta(hours=24 // n_timestep)).mean()
-#     input_9 = input_9.iloc[n_timestep - 1:-1]
-#     input_9.index = input_1_s.index
-#     input_9.name = 'schmelz-1'
-#
-#     # Schneeschmelzmenge -2
-#     input_9a = ts_schmelz_1h.resample(timedelta(hours=24 // n_timestep)).mean()
-#     input_9a = input_9a.iloc[n_timestep - 2:-2]
-#     input_9a.index = input_1_s.index
-#     input_9a.name = 'schmelz-2'
-#
-#     # Schneeschmelzmenge -3
-#     input_9b = ts_schmelz_1h.resample(timedelta(hours=24 // n_timestep)).mean()
-#     input_9b = input_9b.iloc[n_timestep - 3:-3]
-#     input_9b.index = input_1_s.index
-#     input_9b.name = 'schmelz-3'
-#
-#     # Normalisiere Input (im Prognosemodus hole min, max aus Training)
-#     input_data = pd.concat([input_1_s, input_1_c, input_4, input_5, input_6, input_6a, input_6b, input_7, input_7a,
-#                             input_7b, input_8, input_8a, input_8b, input_8c, input_9, input_9a, input_9b],
-#                            axis=1, join="inner")
-#     if idx_train:
-#         min_col = input_data.min()
-#         max_col = input_data.max()
-#         with open(f'tasks//Input//models_keras//zufluss//{str_model}//min_col.pkl', 'wb') as file:
-#             pickle.dump(min_col, file)
-#         with open(f'tasks//Input//models_keras//zufluss//{str_model}//max_col.pkl', 'wb') as file:
-#             pickle.dump(max_col, file)
-#     else:
-#         with open(f'tasks//Input//models_keras//zufluss//{str_model}//min_col.pkl', 'rb') as file:
-#             min_col = pickle.load(file)
-#         with open(f'tasks//Input//models_keras//zufluss//{str_model}//max_col.pkl', 'rb') as file:
-#             max_col = pickle.load(file)
-#
-#     input_data = (input_data - min_col) / (max_col - min_col)
-#     n_input = input_data.shape[1]
-#
-#     # entferne ungewollte Trainingstage
-#     if idx_train:
-#         return input_data[(input_3['useday'] > 0)].to_numpy().reshape(
-#             [-1, n_timestep, n_input]), input_data.columns.get_loc('base_day_-1')
-#     else:
-#         return input_data.to_numpy().reshape([-1, n_timestep, n_input]), input_data.columns.get_loc('base_day_-1')
+def convert_seq_to_df(seq_array, start_date, n_timestep:int, daily:bool=False):
+    # Ensure datetime object
+    if isinstance(start_date, str):
+        start_date = datetime.strptime(start_date, '%d.%m.%Y %H:%M:%S')
 
+    # Localize in Etc/GMT-1 timezone
+    start_date = timezone('Etc/GMT-1').localize(start_date)
+
+    # Create datetime index from date range
+    date_index = pd.date_range(start=start_date,
+                               periods=seq_array.shape[0],
+                               tz='Etc/GMT-1',
+                               freq=f'{24 // n_timestep}h')
+
+    # Create dataframe
+    df_seq = pd.DataFrame().from_records(seq_array)
+    df_seq.index = date_index
+
+    return df_seq
+
+
+def dailydf_to_ts(daily_df, header:str='value'):
+    # Extract values
+    values = []
+    for row in range(len(daily_df)):
+        for column in range(len(daily_df.columns)):
+            values.append(daily_df.iloc[row, column])
+
+    # Set new date index
+    date_index = pd.date_range(start=daily_df.index[0],
+                               periods=len(values),
+                               tz='Etc/GMT-1',
+                               freq=f'{24 // len(daily_df.columns)}h')
+
+    daily_ts = pd.Series(data=values, index=date_index)
+    daily_ts.name = header
+
+    return daily_ts
 
 
 

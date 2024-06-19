@@ -35,7 +35,7 @@ class simpleLSTM():
         # Build Model
         model = Sequential()
         model.add(Input(shape=(n_timestep, n_features), dtype='float64'))
-        model.add(LSTM(units=units_l1, activation=activation_l1))
+        model.add(LSTM(units=units_l1, activation=activation_l1, return_sequences=True))
         model.add(Dropout(dropout_l1))
         model.add(LSTM(units=units_l2, activation=activation_l2))
         model.add(Dropout(dropout_l2))
@@ -44,25 +44,3 @@ class simpleLSTM():
         print(model.summary())
 
         return model
-
-    def train_model(self, x_train, y_train, model, n_patience:int, n_epochs:int, n_batch_size:int, val_share:float=0.2):
-        # Split off validation data
-        x_val = train_test_split(x_train, test_size=val_share, shuffle=False)
-        y_val = train_test_split(y_train, test_size=val_share, shuffle=False)
-
-        # Fit model incl early stopping & Learning rate
-        stop_condition = EarlyStopping(monitor='val_loss', mode='min', verbose=0,
-                                       patience=n_patience, restore_best_weights=True)
-
-        lrate_reduction = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=n_patience-1, min_lr=1e-7)
-
-        training = model.fit(x=x_train, y=y_train, validation_data=(x_val, y_val), epochs=n_epochs,
-                             verbose=0, batch_size=n_batch_size, callbacks=[stop_condition, lrate_reduction])
-
-        return training
-
-    def predict_model(self, x_test, y_test, trained_model):
-        # Prediction step
-        y_pred = trained_model.predict(x_test)
-
-        return y_pred
