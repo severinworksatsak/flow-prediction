@@ -4,7 +4,7 @@
       "inputs": {
         "base_1d": {
           "ts_id": 11055778,
-          "lags": [0],
+          "lags": [1],
           "freq": "1d",
           "time_shift": "date_from",
           "str_table": "meanvalues"
@@ -81,7 +81,7 @@
         },
         "base_1d": {
           "ts_id": 11055778,
-          "lags": [0],
+          "lags": [1],
           "freq": "1d",
           "time_shift": "date_from",
           "str_table": "meanvalues"
@@ -95,31 +95,31 @@
         },
         "temp_1h": {
           "ts_id": 10253447,
-          "lags": [0],
+          "lags": [1],
           "freq": "1h",
           "time_shift": "date_from"
         },
         "glob_1h": {
           "ts_id": 10255110,
-          "lags": [0],
+          "lags": [1,2,3],
           "freq": "1h",
           "time_shift": "date_from"
         },
         "rain_1h": {
           "ts_id": 10253455,
-          "lags": [0],
+          "lags": [1,2,3],
           "freq": "1h",
           "time_shift": "date_from"
         },
         "bf15_1h": {
           "ts_id": 11010900,
-          "lags": [0],
+          "lags": [0,1,2,3],
           "freq": "1h",
           "time_shift": "date_from"
         },
         "schmelz_1h": {
           "ts_id": 11010892,
-          "lags": [0],
+          "lags": [1,2,3],
           "freq": "1h",
           "time_shift": "date_from"
         }
@@ -139,7 +139,91 @@
           "n_epochs": 1000,
           "n_batch_size": 32,
           "n_timestep": 6,
-          "n_hidden_neurons": 200
+          "units_l1": 200,
+          "dropout_l1": 0.2,
+          "activation_l1": "tanh",
+          "units_l2": 100,
+          "dropout_l2": 0.1,
+          "activation_l2": "tanh"
+        }
+      },
+      "outputs": {
+        "model": {
+          "ts_id": 11055610
+        }
+      }
+    },
+    "inlet1_svr": {
+      "inputs": {
+        "base": {
+          "ts_id": 11127586,
+          "lags": [0],
+          "freq": "1h",
+          "time_shift": "date_from"
+        },
+        "base_1d": {
+          "ts_id": 11055778,
+          "lags": [1],
+          "freq": "1d",
+          "time_shift": "date_from",
+          "str_table": "meanvalues"
+        },
+        "useday_1d": {
+          "ts_id": 11055632,
+          "lags": [0],
+          "freq": "1d",
+          "time_shift": "date_to",
+          "str_table": "meanvalues"
+        },
+        "temp_1h": {
+          "ts_id": 10253447,
+          "lags": [1],
+          "freq": "1h",
+          "time_shift": "date_from"
+        },
+        "glob_1h": {
+          "ts_id": 10255110,
+          "lags": [1,2,3],
+          "freq": "1h",
+          "time_shift": "date_from"
+        },
+        "rain_1h": {
+          "ts_id": 10253455,
+          "lags": [1,2,3],
+          "freq": "1h",
+          "time_shift": "date_from"
+        },
+        "bf15_1h": {
+          "ts_id": 11010900,
+          "lags": [0,1,2,3],
+          "freq": "1h",
+          "time_shift": "date_from"
+        },
+        "schmelz_1h": {
+          "ts_id": 11010892,
+          "lags": [1,2,3],
+          "freq": "1h",
+          "time_shift": "date_from"
+        }
+      },
+      "parameters": {
+        "training": {
+          "weekday_train": 6,
+          "active_calc": 1,
+          "train_start": "02.03.2021",
+          "last_day_train": -3,
+          "first_day_calc": -1,
+          "last_day_calc": 7
+        },
+        "architecture": {
+          "n_valid": 50,
+          "n_patience": 5,
+          "n_epochs": 1000,
+          "n_batch_size": 32,
+          "n_timestep": 6,
+          "hyperparameters": {
+
+          }
         }
       },
       "outputs": {

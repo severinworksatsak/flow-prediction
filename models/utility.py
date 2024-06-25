@@ -17,7 +17,9 @@ from solutil import dbqueries as db
 def get_dates_from_config(str_model: str):
     """
     Method to load date parameters for load_input.
-    :param str_model: Model name as used in section header of json config
+
+    :param str_model: Model name as used in section header of json config.
+
     :return: date dict containing date_from and date_to parameters in datetime format.
     """
     # Load config from directory
@@ -63,6 +65,7 @@ def get_params_from_config(function: str, str_model: str):
             param_dict['n_patience'] = model_config['parameters']['architecture']['n_patience']
             param_dict['n_epochs'] = model_config['parameters']['architecture']['n_epochs']
             param_dict['n_batch_size'] = model_config['parameters']['architecture']['n_batch_size']
+            param_dict['n_timestep'] = model_config['parameters']['architecture']['n_timestep']
         case _:
             raise ValueError('Provided function name is not available.')
 
@@ -213,6 +216,34 @@ def load_input(str_model: str, date_from, date_to, n_timestep: int = None, use_d
     return df_collect
 
 
+# Day of Year Function
+def transform_dayofyear(df):
+    """
+    Get day of year in sinus / cosinus transformed format.
+
+    :param df: Input dataframe with datetime index on which the transformation is performed.
+
+    :return: Input pd.DataFrame with amended doy_sin and doy_cos features.
+    """
+    date_index = df.index
+
+    # Get sinus wave
+    sin_wave = [sin((timestamp.dayofyear + timestamp.hour / 24) /
+                    (monthrange(timestamp.year, 2)[1] + 337) * 2 * pi)
+                for timestamp in date_index]
+
+    # Get cosinus wave
+    cos_wave = [cos((timestamp.dayofyear + timestamp.hour / 24) /
+                    (monthrange(timestamp.year, 2)[1] + 337) * 2 * pi)
+                for timestamp in date_index]
+
+    # Assign wave series to df
+    df['yearday_sin'] = sin_wave
+    df['yearday_cos'] = cos_wave
+
+    return df
+
+
 # Outlier Detection
 def handle_outliers(df, contamination='auto', window_length: int = 6, alpha: float = None):
     """
@@ -256,6 +287,15 @@ def handle_outliers(df, contamination='auto', window_length: int = 6, alpha: flo
 
 # Prepare Inputs for ML Model
 def scale_with_minmax(df_features, str_model: str, idx_train: bool = True):
+    """
+    Scale dataframe with Min Max Normalization and save weights as .pkl file.
+
+    :param df_features: Dataframe containing to-be-scaled variables.
+    :param str_model: Name of prediction model as occurring in config, e.g. inlet1_lstm.
+    :param idx_train: Boolean indicator for training / productive mode.
+
+    :return: Scaled dataframe and normalization weights in pkl file saved in attributes folder.
+    """
     # Perform MinMax Scaling
     if idx_train:
         # Get scaling parameters from hist data
@@ -282,7 +322,15 @@ def scale_with_minmax(df_features, str_model: str, idx_train: bool = True):
 
 
 # Inverse transform scaling
-def inverse_transform_minmax(df_scaled, str_model: str, attributes):
+def inverse_transform_minmax(df_scaled, str_model: str, attributes:list):
+    """
+    Reverse min-max scaling of data sets based on saved weights.
+
+    :param df_scaled: Scaled dataframe, e.g. output of ML model.
+    :param str_model: Name of prediction model as occurring in config, e.g. inlet1_lstm.
+    :param attributes: List of variable names of to-be-rescaled features.
+    :return: Rescaled dataframe.
+    """
     # Load attributes
     with open(f'models//attributes//{str_model}_min_col.pkl', 'rb') as file:
         min_col = pickle.load(file)
@@ -299,25 +347,37 @@ def inverse_transform_minmax(df_scaled, str_model: str, attributes):
 
 
 # Split training / test set
-def split_dataframe(df_features, target_var: str = None, train_share: float = 0.7, **kwargs):
+def split_dataframe(df_features, target_var = None, train_share: float = 0.7, shuffle:bool=False,
+                    **kwargs):
     """
     Separate target variable from feature matrix and perform train-test-split.
 
     Parameters:
     :param df_features: (pd.DataFrame) Feature dataframe containing both target variable and features.
-    :param target_var: (str) Name of the target variable, used for column indexing.
+    :param target_var: (str, list) Single name or list of names of the target variable(s), used for column indexing.
     :param train_share: (float) Share of training data from total dataset.
     :param kwargs: Input parameters for sklearn train_test_split function, e.g. shuffle.
 
     Returns:
     :return: x_train, x_test, y_train, y_test -> Dataframes with corresponding train / test data.
     """
-
-    # Extract Target Variable & Split
-    y_train, y_test = train_test_split(df_features[target_var], train_size=train_share, **kwargs)
+    # Input Check
+    if isinstance(target_var, str):
+        features = df_features.drop(columns=target_var)
+        label = df_features[target_var]
+    elif isinstance(target_var, list):
+        features = df_features.drop(columns=target_var)
+        label = df_features[target_var]
+    else:
+        raise ValueError("Type of target_var must be either str or list. Change input accordingly.")
 
     # Remove Target Variable & Split
-    x_train, x_test = train_test_split(df_features.drop(columns=[target_var]), train_size=train_share, **kwargs)
+    x_train, x_test, y_train, y_test = train_test_split(features,
+                                                        label,
+                                                        train_size=train_share,
+                                                        shuffle=shuffle,
+                                                        **kwargs
+                                                        )
 
     return x_train, x_test, y_train, y_test
 
@@ -329,17 +389,18 @@ def generate_sequences(df, target_var: str, n_lookback: int, n_ahead: int, n_off
     """
     Generate sequence arrays for LSTM and perform train-test-split.
     :param df: Dataframe containing x and y features.
-    :param target_var: Column name of target variable y in df.
-    :param n_lookback: Sequence length of features x.
-    :param n_ahead: Sequence length of target variable y.
-    :param n_offset: Offset interval between feature and target sequence as expressed in number of timesteps.
+    :param target_var: (str) Column name of target variable y in df.
+    :param n_lookback: (int) Sequence length of features x.
+    :param n_ahead: (int) Sequence length of target variable y.
+    :param n_offset: (int) Offset interval between feature and target sequence as expressed in number of timesteps.
                      Defaults to 0.
-    :param drop_target: Boolean indicator to drop target variable from x sample.
+    :param drop_target: (bool) Boolean indicator to drop target variable from x sample.
                         Defaults to True.
-    :param continuous: Boolean indicator whether sequencing should be continuous or step-wise. Step-wise can
+    :param continuous: (bool) Boolean indicator whether sequencing should be continuous or step-wise. Step-wise can
                        be used if the prediction should be only once a day for the entire day ahead.
-    :param n_timestep: Number of timesteps in a day. Used to ensure only one sequence per day occurring.
-    :param train_share: Train-test split threshold; train_share = % of dataset included
+    :param n_timestep: (int) Number of timesteps in a day. Used to ensure only one sequence per day occurring.
+                       Default is 6.
+    :param train_share: (float) Train-test split threshold; train_share = % of dataset included
                         in train sample.
     :return: Tuple containing x_train, x_test, y_train, y_test.
     """
@@ -363,7 +424,7 @@ def generate_sequences(df, target_var: str, n_lookback: int, n_ahead: int, n_off
         x_list.append(x_sequence_t)
         y_list.append(y_sequence_t)
 
-    # Filter out in case of discontinuous sequences
+    # Filter out observations in case of discontinuous sequences (i.e. keep only e.g. daily sequences)
     if not continuous:
         x_list = x_list[::n_timestep]
         y_list = y_list[::n_timestep]
@@ -375,7 +436,21 @@ def generate_sequences(df, target_var: str, n_lookback: int, n_ahead: int, n_off
     return x_train, x_test, y_train, y_test
 
 
-def convert_seq_to_df(seq_array, start_date, n_timestep:int, daily:bool=False):
+def convert_seq_to_df(seq_array, start_date, n_timestep:int):
+    """
+    Convert LSTM sequence into dataframe by concatenating subsequent sequences. Function is built for
+    non-overlapping sequences!
+
+    :param seq_array: (array) Numpy array of sequences to-be-converted.
+    :param start_date: (str, datetime) First timestamp of datetime index, which is added to the converted sequence.
+    :param n_timestep: (int) Number of intraday timestemps that should be passed onto the model's input layer. Loaded
+                       from the config json.
+
+    :return: Dataframe with concatenated sequences; each new sequence fills a new row.
+
+    :note: For further use, the resulting dataframe often has to be converted to resemble pd.Series structure. Also
+           see dailydf_to_ts method.
+    """
     # Ensure datetime object
     if isinstance(start_date, str):
         start_date = datetime.strptime(start_date, '%d.%m.%Y %H:%M:%S')
@@ -397,6 +472,15 @@ def convert_seq_to_df(seq_array, start_date, n_timestep:int, daily:bool=False):
 
 
 def dailydf_to_ts(daily_df, header:str='value'):
+    """
+    Concatenate rows of dataframe into single-column format to generate pd.Series-like structure.
+
+    :param daily_df: (pd.DataFrame) Dataframe with row-wise observation entries and datetime index,
+                     e.g. all observations of the same day in the same row.
+    :param header: (str) Name of the newly created dataframe column.
+
+    :return: (pd.Series) Series of concatenated sequences with datetime index.
+    """
     # Extract values
     values = []
     for row in range(len(daily_df)):
