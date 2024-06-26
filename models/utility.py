@@ -66,6 +66,8 @@ def get_params_from_config(function: str, str_model: str):
             param_dict['n_epochs'] = model_config['parameters']['architecture']['n_epochs']
             param_dict['n_batch_size'] = model_config['parameters']['architecture']['n_batch_size']
             param_dict['n_timestep'] = model_config['parameters']['architecture']['n_timestep']
+        case 'build_svr':
+            param_dict['hyperparameters'] = model_config['parameters']['architecture']['hyperparameters']
         case _:
             raise ValueError('Provided function name is not available.')
 

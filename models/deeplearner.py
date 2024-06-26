@@ -39,7 +39,7 @@ class DeepLearner():
         :param val_share: (float) Share of validation set expressed as number from (0,1)
         :param verbose_int: (int) Verbose level to control extent of printed output.
 
-        :return: Trained keras model.
+        :return: Trained keras/sklearn model.
         :return: Training history.
         """
         # Split off validation data
