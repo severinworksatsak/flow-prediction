@@ -107,7 +107,7 @@
         "base_1d": {
           "ts_id": 11055778,
           "lags": [
-            1
+            0
           ],
           "freq": "1d",
           "time_shift": "date_from",
@@ -116,7 +116,7 @@
         "useday_1d": {
           "ts_id": 11055632,
           "lags": [
-            0
+            1
           ],
           "freq": "1d",
           "time_shift": "date_to",
@@ -125,7 +125,7 @@
         "temp_1h": {
           "ts_id": 10253447,
           "lags": [
-            1
+            0, 1
           ],
           "freq": "1h",
           "time_shift": "date_from"
@@ -133,9 +133,7 @@
         "glob_1h": {
           "ts_id": 10255110,
           "lags": [
-            1,
-            2,
-            3
+            1, 2, 3
           ],
           "freq": "1h",
           "time_shift": "date_from"
@@ -143,33 +141,37 @@
         "rain_1h": {
           "ts_id": 10253455,
           "lags": [
-            1,
-            2,
-            3
+            0, 1
           ],
           "freq": "1h",
           "time_shift": "date_from"
         },
         "bf15_1h": {
           "ts_id": 11010900,
-          "lags": [
-            0,
-            1,
-            2,
-            3
-          ],
+          "lags": [0],
           "freq": "1h",
           "time_shift": "date_from"
         },
         "schmelz_1h": {
           "ts_id": 11010892,
-          "lags": [
-            1,
-            2,
-            3
-          ],
+          "lags": [0, 1],
           "freq": "1h",
           "time_shift": "date_from"
+        },
+        "rain_1h_prog": {
+          "ts_id": 11011951,
+          "lags": [-6],
+          "freq": "1h"
+        },
+        "glob_1h_prog": {
+          "ts_id": 11011947,
+          "lags": [-6],
+          "freq": "1h"
+        },
+        "temp_1h_prog": {
+          "ts_id": 11011939,
+          "lags": [-6],
+          "freq": "1h"
         }
       },
       "parameters": {
@@ -187,12 +189,14 @@
           "n_epochs": 1000,
           "n_batch_size": 32,
           "n_timestep": 6,
-          "units_l1": 200,
-          "dropout_l1": 0.2,
-          "activation_l1": "tanh",
-          "units_l2": 100,
-          "dropout_l2": 0.1,
-          "activation_l2": "tanh"
+          "hyperparameters": {
+            "units_l1": 200,
+            "dropout_l1": 0.2,
+            "activation_l1": "tanh",
+            "units_l2": 100,
+            "dropout_l2": 0.1,
+            "activation_l2": "tanh"
+          }
         }
       },
       "outputs": {
@@ -222,9 +226,7 @@
         },
         "useday_1d": {
           "ts_id": 11055632,
-          "lags": [
-            0
-          ],
+          "lags": [1],
           "freq": "1d",
           "time_shift": "date_to",
           "str_table": "meanvalues"
@@ -241,8 +243,7 @@
           "ts_id": 10255110,
           "lags": [
             1,
-            2,
-            3
+            2
           ],
           "freq": "1h",
           "time_shift": "date_from"
@@ -251,8 +252,7 @@
           "ts_id": 10253455,
           "lags": [
             1,
-            2,
-            3
+            2
           ],
           "freq": "1h",
           "time_shift": "date_from"
@@ -262,8 +262,7 @@
           "lags": [
             0,
             1,
-            2,
-            3
+            2
           ],
           "freq": "1h",
           "time_shift": "date_from"

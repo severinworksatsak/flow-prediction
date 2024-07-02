@@ -13,11 +13,10 @@ from keras.models import Sequential
 from keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from scikeras.wrappers import KerasRegressor
 from models.lstm import simpleLSTM
-from models.utility import generate_sequences
 from tqdm import tqdm
 
 from solutil import dbqueries as db
-from models.utility import load_input, scale_with_minmax, generate_sequences
+from models.utility import load_input, scale_with_minmax
 
 class DeepLearner():
 
@@ -81,11 +80,12 @@ class DeepLearner():
 
         :return: Dictionary with lookback period as keys and x_train, y_train sequence arrays as values.
         """
+        lstm = simpleLSTM()
         input_dict = {}
 
         # Get x_train and y_train for all specified lengths
         for n_lookback in lookback_list:
-            sequence_array = generate_sequences(df, target_var, n_lookback, n_ahead, **kwargs)
+            sequence_array = lstm.generate_sequences(df, target_var, n_lookback, n_ahead, **kwargs)
             x_train = sequence_array[0]
             y_train = sequence_array[2]
             input_dict[n_lookback] = {

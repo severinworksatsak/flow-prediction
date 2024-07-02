@@ -1,20 +1,10 @@
 import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
-from math import sin, cos, pi, log10
-from calendar import monthrange
-import pickle
-import configparser
+from datetime import datetime
 import json
 from pathlib import Path
 from sklearn.svm import SVR
-from sklearn.model_selection import train_test_split
-from keras.layers import Input, Dense, Dropout, LSTM, Bidirectional
-from keras.models import Sequential
-from keras.callbacks import EarlyStopping, ReduceLROnPlateau
 
-from solutil import dbqueries as db
-from models.utility import load_input, scale_with_minmax, generate_sequences, get_params_from_config
+from models.utility import get_params_from_config
 
 # Build SVR class
 class SVReg():
@@ -31,17 +21,26 @@ class SVReg():
         """
         Create new target variables for each timestep-SVR model. As SVR output is single-length, a full-day prediction
         requires the training of n_timestep models and thus n_timestep different target variables.
+
+        Parameters:
         :param df: Feature dataframe containing the target variable.
         :param target_var: Name of the target variable passed as string - used for column referencing.
         :param model_str: Name of model for which parameter n_timestep should be loaded from config.
         :param n_offset: Number of timesteps between training and first prediction.
         :param n_timestep: Number of intra-day timesteps within a day.
+
+        Returns:
         :return df: Dataframe with target variables for n_timestep models.
         :return name_list: List with all label names.
+
+        Notes:
+        :note: If prediction is to be made for next timestep, offset parameter has to be set to 0. In other words, the
+               default forecase period will be t+1. If inputs x ranging from t-(x+y) through t-x should be used to
+               predict y(t-x), an offset of -1 can be used.
         """
         # Retrieve config values
         if n_timestep is None:
-            n_timestep = get_params_from_config('model_train', str_model)['n_timestep']
+            n_timestep = get_params_from_config('get_n_timestep', str_model)['n_timestep']
 
         if n_offset is None:
             n_offset = n_timestep
@@ -53,7 +52,7 @@ class SVReg():
             # Individual model parameters
             model_num = timestep + 1
             model_name = f"model{model_num}"
-            lag = -(timestep + n_offset)
+            lag = -(timestep + 1 + n_offset)
             y_name = f"y_{model_name}"
             name_list.append(y_name)
 
@@ -155,7 +154,7 @@ class SVReg():
         """
         # None Check
         if n_timestep is None:
-            n_timestep = get_params_from_config('model_train', str_model)['n_timestep']
+            n_timestep = get_params_from_config('get_n_timestep', str_model)['n_timestep']
 
         if freq is None:
             freq = f'{24 // n_timestep}h'
