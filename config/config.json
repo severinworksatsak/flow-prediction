@@ -96,13 +96,15 @@
     },
     "inlet1_lstm": {
       "inputs": {
+        "include_doy": true,
         "base": {
           "ts_id": 11127586,
           "lags": [
             0
           ],
           "freq": "1h",
-          "time_shift": "date_from"
+          "time_shift": "date_from",
+          "is_label": true
         },
         "base_1d": {
           "ts_id": 11055778,
@@ -189,6 +191,9 @@
           "n_epochs": 1000,
           "n_batch_size": 32,
           "n_timestep": 6,
+          "n_lookback": 20,
+          "n_ahead": 6,
+          "n_offset": 0,
           "hyperparameters": {
             "units_l1": 200,
             "dropout_l1": 0.2,
@@ -207,13 +212,15 @@
     },
     "inlet1_svr": {
       "inputs": {
+        "include_doy": true,
         "base": {
           "ts_id": 11127586,
           "lags": [
             0
           ],
           "freq": "1h",
-          "time_shift": "date_from"
+          "time_shift": "date_from",
+          "is_label": true
         },
         "base_1d": {
           "ts_id": 11055778,
@@ -288,11 +295,8 @@
           "last_day_calc": 7
         },
         "architecture": {
-          "n_valid": 50,
-          "n_patience": 5,
-          "n_epochs": 1000,
-          "n_batch_size": 32,
           "n_timestep": 6,
+          "n_offset": 0,
           "hyperparameters": {
             "config1": {
               "valid_for": [

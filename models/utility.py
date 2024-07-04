@@ -61,14 +61,40 @@ def get_params_from_config(function: str, str_model: str):
 
             param_dict['date_from'] = date_from
             param_dict['date_to'] = date_to_clean
+
         case 'model_train':
             param_dict['n_patience'] = model_config['parameters']['architecture']['n_patience']
             param_dict['n_epochs'] = model_config['parameters']['architecture']['n_epochs']
             param_dict['n_batch_size'] = model_config['parameters']['architecture']['n_batch_size']
+
         case 'build_svr':
             param_dict['hyperparameters'] = model_config['parameters']['architecture']['hyperparameters']
+            param_dict['n_offset'] = model_config['parameters']['architecture']['n_offset']
+
+        case 'lstm_sequence':
+            param_dict['n_lookback'] = model_config['parameters']['architecture']['n_lookback']
+            param_dict['n_ahead'] = model_config['parameters']['architecture']['n_ahead']
+            param_dict['n_offset'] = model_config['parameters']['architecture']['n_offset']
+            param_dict['n_valid'] = model_config['parameters']['architecture']['n_valid']
+
         case 'get_n_timestep':
             param_dict['n_timestep'] = model_config['parameters']['architecture']['n_timestep']
+
+        case 'get_label':
+            iter_dict = model_config['inputs']
+
+            for var_key, var_value in iter_dict.items():
+                if isinstance(var_value, dict) and var_value.get('is_label'):
+                    lag = iter_dict[var_key]['lags'][0]
+                    label_name = f'{var_key}_lag{lag}'
+            if 'label_name' not in locals():
+                raise NameError("No 'is_label' key found in config variable specification.")
+
+            param_dict['label'] = label_name
+
+        case 'get_doyflag':
+            param_dict['doy_flag'] = model_config['inputs']['include_doy']
+
         case _:
             raise ValueError('Provided function name is not available.')
 
@@ -142,7 +168,8 @@ def load_input(str_model: str, date_from, date_to, n_timestep: int = None, use_d
 
     counter = 0
 
-    for input_variable in model_config['inputs'].keys():
+    clean_variables = [key for key in model_config['inputs'].keys() if key != 'include_doy']
+    for input_variable in clean_variables:
         print(input_variable)
         # Extract input variable parameters
         ts_id_i = model_config['inputs'][input_variable]['ts_id']
@@ -251,7 +278,7 @@ def transform_dayofyear(df):
     df['yearday_sin'] = sin_wave
     df['yearday_cos'] = cos_wave
 
-    return df
+    return df.copy()
 
 
 # Outlier Detection
@@ -348,6 +375,7 @@ def inverse_transform_minmax(df_scaled, str_model: str, attributes:list, verbose
     :param str_model: Name of prediction model as occurring in config, e.g. inlet1_lstm.
     :param attributes: List of variable names of to-be-rescaled features.
     :param verbose: Detail level of output print. 0 means no output print, 1 returns mins and scale weights.
+
     :return: Rescaled dataframe.
     """
     # Load attributes
@@ -403,95 +431,6 @@ def split_dataframe(df_features, target_var = None, train_share: float = 0.7, sh
                                                         )
 
     return x_train, x_test, y_train, y_test
-
-
-# Sequencing for LSTM
-# def generate_sequences(df, target_var: str, n_lookback: int, n_ahead: int, n_offset:int=0,
-#                        drop_target: bool = True, continuous:bool=True, n_timestep:int=6,
-#                        train_share: float = 0.7):
-#     """
-#     Generate sequence arrays for LSTM and perform train-test-split.
-#     :param df: Dataframe containing x and y features.
-#     :param target_var: (str) Column name of target variable y in df.
-#     :param n_lookback: (int) Sequence length of features x.
-#     :param n_ahead: (int) Sequence length of target variable y.
-#     :param n_offset: (int) Offset interval between feature and target sequence as expressed in number of timesteps.
-#                      Defaults to 0.
-#     :param drop_target: (bool) Boolean indicator to drop target variable from x sample.
-#                         Defaults to True.
-#     :param continuous: (bool) Boolean indicator whether sequencing should be continuous or step-wise. Step-wise can
-#                        be used if the prediction should be only once a day for the entire day ahead.
-#     :param n_timestep: (int) Number of timesteps in a day. Used to ensure only one sequence per day occurring.
-#                        Default is 6.
-#     :param train_share: (float) Train-test split threshold; train_share = % of dataset included
-#                         in train sample.
-#     :return: Tuple containing x_train, x_test, y_train, y_test.
-#     """
-#     # Separate target variable
-#     df_y = df[target_var]
-#     df_x = df.drop(columns=[target_var]) if drop_target else df
-#
-#     # Prepare sequence variables
-#     x_list = []
-#     y_list = []
-#     df_x_numpy = df_x.to_numpy()
-#     df_y_numpy = df_y.to_numpy()
-#
-#     # Create sequences
-#     for timestep in range(n_lookback, df_x_numpy.shape[0] - n_ahead - n_offset):
-#         # Slice df into series
-#         x_sequence_t = df_x_numpy[timestep - n_lookback:timestep]
-#         y_sequence_t = df_y_numpy[timestep + n_offset:timestep + n_ahead + n_offset]
-#
-#         # Assign series to strawmans
-#         x_list.append(x_sequence_t)
-#         y_list.append(y_sequence_t)
-#
-#     # Filter out observations in case of discontinuous sequences (i.e. keep only e.g. daily sequences)
-#     if not continuous:
-#         x_list = x_list[::n_timestep]
-#         y_list = y_list[::n_timestep]
-#
-#     # Train Test Split & Numpy Conversion
-#     x_train, x_test, y_train, y_test = train_test_split(np.array(x_list), np.array(y_list),
-#                                                         train_size=train_share, shuffle=False)
-#
-#     return x_train, x_test, y_train, y_test
-#
-#
-# def convert_seq_to_df(seq_array, start_date=None, n_timestep:int):
-#     """
-#     Convert LSTM sequence into dataframe by concatenating subsequent sequences. Function is built for
-#     non-overlapping sequences!
-#
-#     :param seq_array: (array) Numpy array of sequences to-be-converted.
-#     :param start_date: (str, datetime) First timestamp of datetime index, which is added to the converted sequence.
-#     :param n_timestep: (int) Number of intraday timestemps that should be passed onto the model's input layer. Loaded
-#                        from the config json.
-#
-#     :return: Dataframe with concatenated sequences; each new sequence fills a new row.
-#
-#     :note: For further use, the resulting dataframe often has to be converted to resemble pd.Series structure. Also
-#            see dailydf_to_ts method.
-#     """
-#     # Ensure datetime object
-#     if isinstance(start_date, str):
-#         start_date = datetime.strptime(start_date, '%d.%m.%Y %H:%M:%S')
-#
-#     # Localize in Etc/GMT-1 timezone
-#     start_date = timezone('Etc/GMT-1').localize(start_date)
-#
-#     # Create datetime index from date range
-#     date_index = pd.date_range(start=start_date,
-#                                periods=seq_array.shape[0],
-#                                tz='Etc/GMT-1',
-#                                freq=f'{24 // n_timestep}h')
-#
-#     # Create dataframe
-#     df_seq = pd.DataFrame().from_records(seq_array)
-#     df_seq.index = date_index
-#
-#     return df_seq
 
 
 def dailydf_to_ts(daily_df, header:str='value'):

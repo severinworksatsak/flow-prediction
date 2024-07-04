@@ -1,22 +1,10 @@
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
-from math import sin, cos, pi
-from calendar import monthrange
-import pickle
-import configparser
-import json
-from pathlib import Path
-from sklearn.model_selection import train_test_split, GridSearchCV, ParameterGrid
-from keras.layers import Input, Dense, Dropout, LSTM
-from keras.models import Sequential
+from sklearn.model_selection import train_test_split, ParameterGrid
 from keras.callbacks import EarlyStopping, ReduceLROnPlateau
-from scikeras.wrappers import KerasRegressor
 from models.lstm import simpleLSTM
 from tqdm import tqdm
 
-from solutil import dbqueries as db
-from models.utility import load_input, scale_with_minmax
 
 class DeepLearner():
 

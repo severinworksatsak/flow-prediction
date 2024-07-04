@@ -5,14 +5,14 @@ Created on Fri May 17 16:12:50 2024
 @author: LES
 """
 
-from models.utility import load_input, get_dates_from_config, handle_outliers, get_params_from_config
+from models.utility import load_input, handle_outliers
 
 import configparser
 from datetime import datetime, timedelta
 import pandas as pd
+import pickle
 
 import solutil.dbqueries as db
-from datetime import datetime, timedelta
 
 ## Variable Assignment
 str_model = 'Inlet1'
@@ -37,11 +37,15 @@ data = load_input(str_model='inlet1_lstm', date_from=date_from, date_to=date_to)
 
 outliers = handle_outliers(data)
 
-get_params_from_config(function='get_label', str_model='inlet1_lstm')
+str_model = 'inlet1_lstm'
+with open(f'models//attributes//{str_model}_min_col.pkl', 'rb') as file:
+    min_col = pickle.load(file)
+    
+with open(f'models//attributes//{str_model}_scale_factor.pkl', 'rb') as file:
+    scale_factor = pickle.load(file)
 
+timedelta(hours=24 // 6)
 
-
-
-
+scale_factor[['base_lag0']]
 
 

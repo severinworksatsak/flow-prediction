@@ -1,10 +1,6 @@
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
-from math import sin, cos, pi
-from calendar import monthrange
-import pickle
-import configparser
+from datetime import datetime
 import json
 from pathlib import Path
 from sklearn.model_selection import train_test_split
@@ -12,11 +8,6 @@ from keras.layers import Input, Dense, Dropout, LSTM, Bidirectional
 from keras.models import Sequential
 from models.utility import get_params_from_config
 from pytz import timezone
-
-from keras.callbacks import EarlyStopping, ReduceLROnPlateau
-
-from solutil import dbqueries as db
-from models.utility import load_input, scale_with_minmax
 
 # Build LSTM class
 class simpleLSTM():
@@ -114,7 +105,7 @@ class simpleLSTM():
     # Sequencing for LSTM
     def generate_sequences(self, df, target_var: str, n_lookback: int, n_ahead: int, n_offset: int = 0,
                            drop_target: bool = True, continuous: bool = True, n_timestep: int = 6,
-                           train_share: float = 0.7):
+                           productive:bool=False, train_share: float = 0.7):
         """
         Generate sequence arrays for LSTM and perform train-test-split.
         :param df: Dataframe containing x and y features with datetime index.
@@ -168,20 +159,35 @@ class simpleLSTM():
             y_list = y_list[::n_timestep]
             timestamps = timestamps[::n_timestep]
 
-        # Train Test Split & Numpy Conversion
-        x_train, x_test, y_train, y_test = train_test_split(np.array(x_list), np.array(y_list),
-                                                            train_size=train_share, shuffle=False)
+        '''
+        Split into train & test datasets only if not in productive version -> in productive version, full loaded input
+        is used for training. Validation set is directly calculated in deepl.train_model() method. 
+        '''
+        if productive:
+            # Return full input
+            x_train = np.array(x_list)
+            y_train = np.array(y_list)
+            x_test = None
+            y_test = None
 
-        timestamp_train, timestamp_test = train_test_split(np.array(timestamps), train_size=train_share,
-                                                           shuffle=False)
+            return x_train, y_train, x_test, y_test
 
-        # Save start date of y_test
+        else:
+            # Train Test Split & Numpy Conversion
+            x_train, x_test, y_train, y_test = train_test_split(np.array(x_list), np.array(y_list),
+                                                                train_size=train_share, shuffle=False)
 
-        min_time = np.min(timestamp_test)
-        min_test_date = pd.to_datetime(min_time, unit='s', utc=True).tz_convert('Etc/GMT-1')
-        self.ytest_startdate = min_test_date
+            timestamp_train, timestamp_test = train_test_split(np.array(timestamps), train_size=train_share,
+                                                               shuffle=False)
 
-        return x_train, x_test, y_train, y_test
+            # Save start date of y_test
+
+            min_time = np.min(timestamp_test)
+            min_test_date = pd.to_datetime(min_time, unit='s', utc=True).tz_convert('Etc/GMT-1')
+            self.ytest_startdate = min_test_date
+
+            return x_train, y_train, x_test, y_test
+
 
     def convert_seq_to_df(self, seq_array, n_timestep:int=None, start_date=None, str_model:str='inlet1_lstm'):
         """
