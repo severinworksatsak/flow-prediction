@@ -120,6 +120,9 @@ class simpleLSTM():
                            be used if the prediction should be only once a day for the entire day ahead.
         :param n_timestep: (int) Number of timesteps in a day. Used to ensure only one sequence per day occurring.
                            Default is 6.
+        :param productive: (bool) Flag indicating whether function is used in productive mode or during experiments. If
+                           true, the data will be split into train and test sets. If false, the entire input data will
+                           be returned as x_train and y_train, with empty x_test and y_test.
         :param train_share: (float) Train-test split threshold; train_share = % of dataset included
                             in train sample.
         :return: Variable sequence arrays x_train, x_test, y_train, y_test.
@@ -163,16 +166,21 @@ class simpleLSTM():
         Split into train & test datasets only if not in productive version -> in productive version, full loaded input
         is used for training. Validation set is directly calculated in deepl.train_model() method. 
         '''
-        if productive:
+        if productive: # For training/prediction in productive environment
             # Return full input
             x_train = np.array(x_list)
             y_train = np.array(y_list)
             x_test = None
             y_test = None
 
-            return x_train, y_train, x_test, y_test
+            # Save start date
+            min_time = np.min(np.array(timestamps))
+            min_test_date = pd.to_datetime(min_time, unit='s', utc=True).tz_convert('Etc/GMT-1')
+            ytest_startdate = min_test_date
 
-        else:
+            return x_train, x_test, y_train, y_test, ytest_startdate
+
+        else: # For experimenting, e.g. in jupyter
             # Train Test Split & Numpy Conversion
             x_train, x_test, y_train, y_test = train_test_split(np.array(x_list), np.array(y_list),
                                                                 train_size=train_share, shuffle=False)
@@ -186,7 +194,7 @@ class simpleLSTM():
             min_test_date = pd.to_datetime(min_time, unit='s', utc=True).tz_convert('Etc/GMT-1')
             self.ytest_startdate = min_test_date
 
-            return x_train, y_train, x_test, y_test
+            return x_train, x_test, y_train, y_test
 
 
     def convert_seq_to_df(self, seq_array, n_timestep:int=None, start_date=None, str_model:str='inlet1_lstm'):

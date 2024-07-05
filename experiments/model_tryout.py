@@ -6,6 +6,8 @@ Created on Fri May 17 16:12:50 2024
 """
 
 from models.utility import load_input, get_dates_from_config, handle_outliers, get_params_from_config
+from models.master_prediction import prepare_inputs, prepare_inputs_lstm, train_lstm
+
 
 import configparser
 from datetime import datetime, timedelta
@@ -39,9 +41,8 @@ outliers = handle_outliers(data)
 
 get_params_from_config(function='get_label', str_model='inlet1_lstm')
 
-
-
-
-
+inputs = prepare_inputs(str_model='inlet1_lstm', idx_train=True)
+inputs_lstm = prepare_inputs_lstm(str_model='inlet1_lstm', idx_train=True)
+train_lstm(str_model='inlet1_lstm')
 
 

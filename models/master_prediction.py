@@ -4,15 +4,21 @@ from models.lstm import simpleLSTM
 from models.deeplearner import DeepLearner
 from models.svr import SVReg
 
+from keras.models import save_model, load_model
+import pickle
+from datetime import datetime, timedelta
 
-def prepare_inputs(str_model:str, idx_train:bool):
+
+def prepare_inputs(str_model:str, idx_train:bool, date_dict:dict=None):
 
     # Get Parameters from Config
-    dates = get_dates_from_config(str_model)
     doy_flag = get_params_from_config(function='get_doyflag', str_model=str_model)['doy_flag']
+    if date_dict is None:
+        date_dict = get_dates_from_config(str_model, training=idx_train)
+    dates = date_dict
 
     # Load Input Data
-    df_variables = load_input(str_model=str_model, **dates)
+    df_variables = load_input(str_model=str_model, idx_train=idx_train, **dates)
 
     # Day of Year Transformation (if commanded)
     if doy_flag:
@@ -27,7 +33,9 @@ def prepare_inputs(str_model:str, idx_train:bool):
     return df_scaled
 
 
-def prepare_inputs_lstm(str_model:str, idx_train:bool):
+# Prepare Inputs for each Model ----------------------------------------------------------------------------------------
+
+def prepare_inputs_lstm(str_model:str, idx_train:bool, date_dict:dict=None, replace_data=None):
 
     # Instantiate Objects
     lstm = simpleLSTM()
@@ -37,7 +45,7 @@ def prepare_inputs_lstm(str_model:str, idx_train:bool):
     target_var = get_params_from_config(function='get_label', str_model=str_model)['label']
 
     # Preparation up to Scaling
-    df_scaled = prepare_inputs(str_model=str_model, idx_train=idx_train)
+    df_scaled = prepare_inputs(str_model=str_model, idx_train=idx_train, date_dict=date_dict)
 
     # Generate Sequences
     n_lookback = sequence_params['n_lookback']
@@ -78,5 +86,139 @@ def prepare_inputs_svr(str_model:str, idx_train:bool):
                                                   n_offset=n_offset)
 
 
-    # Split dataframe (Train, validation set)
+    return df_label, model_names
+
+
+# Train each Model -----------------------------------------------------------------------------------------------------
+
+def train_lstm(str_model:str, idx_train:bool=True):
+    # Instantiate Objects
+    lstm = simpleLSTM()
+    deepl = DeepLearner()
+
+    # Prepare inputs
+    df_seq = prepare_inputs_lstm(str_model=str_model, idx_train=idx_train)
+    x_train = df_seq[0]
+    y_train = df_seq[2]
+
+    # Load hyperparameters
+    train_params = get_params_from_config(function='model_train', str_model=str_model)
+    param_dict = get_params_from_config(function='build_lstm', str_model=str_model)
+    n_valid = param_dict['n_valid']
+    lstm_hyperparams = param_dict['hyperparameters']
+
+    val_share = n_valid / x_train.shape[0]
+
+    # Build model
+    lstm_2l = lstm.build_2layer_lstm(x_train, y_train, **lstm_hyperparams)
+
+    # Train model
+    trained_lstm = deepl.train_model(x_train=x_train,
+                                     y_train=y_train,
+                                     model=lstm_2l,
+                                     val_share=val_share,
+                                     **train_params
+                                     )
+
+    # Save model and training history / params
+    save_model(trained_lstm[0], f'models//attributes//model_{str_model}.keras')
+    with open(f'models//attributes//history_{str_model}.pkl', 'wb') as file:
+        pickle.dump(trained_lstm[1].history, file)
+    with open(f'models//attributes//params_{str_model}.pkl', 'wb') as file:
+        pickle.dump(trained_lstm[1].params, file)
+
+
+def train_svr():
     pass
+
+
+# Predict each model ---------------------------------------------------------------------------------------------------
+
+def predict_lstm(str_model:str, idx_train:bool=False):
+
+    # Instantiate Objects
+    lstm = simpleLSTM()
+
+    # Get config parameters
+    label_name = get_params_from_config(function='get_label', str_model=str_model)['label']
+    n_timestep = get_params_from_config(function='get_n_timestep', str_model=str_model)['n_timestep']
+    sequence_params = get_params_from_config(function='lstm_sequence', str_model=str_model)
+    n_lookback = sequence_params['n_lookback']
+    n_offset = sequence_params['n_offset']
+
+    # Get modified dates -> elongate x_test so that first prediction will be for first_calc_day
+    dates = get_dates_from_config(str_model=str_model, training=idx_train)
+    dates['date_from'] = dates['date_from'] - timedelta(hours=(n_lookback + n_offset) * (24 // n_timestep))
+    print(f"Date_from: {dates['date_from']}, Date_to: {dates['date_to']}")
+
+    # Load prediction parameters & model
+    model = load_model(f'models//attributes//model_{str_model}.keras')
+
+    # Load prediction input
+    df_seq = prepare_inputs_lstm(str_model=str_model, idx_train=idx_train, date_dict=dates)
+    x_pred = df_seq[0]
+    lstm.ytest_startdate = df_seq[4]
+
+    # Predict with LSTM
+    y_pred = model.predict(x_pred)
+
+    # Rescale predictions
+    y_pred_rescaled = inverse_transform_minmax(df_scaled=y_pred, str_model=str_model, attributes=[label_name])
+
+    # Convert back to ts
+    df_ypred = lstm.convert_seq_to_df(seq_array=y_pred_rescaled, n_timestep=None, start_date=None)
+    ts_ypred = dailydf_to_ts(df_ypred)
+
+    # Resample & interpolate predictions
+    return ts_ypred
+
+    # Write predictions to DWH
+
+
+def predict_lstm_daywise(str_model:str, idx_train:bool=False):
+
+    # Instantiate Objects
+    lstm = simpleLSTM()
+
+    # Get config parameters
+    label_name = get_params_from_config(function='get_label', str_model=str_model)['label']
+    n_timestep = get_params_from_config(function='get_n_timestep', str_model=str_model)['n_timestep']
+    sequence_params = get_params_from_config(function='lstm_sequence', str_model=str_model)
+    n_lookback = sequence_params['n_lookback']
+    n_offset = sequence_params['n_offset']
+
+    # Get modified dates -> elongate x_test so that first prediction will be for first_calc_day
+    dates = get_dates_from_config(str_model=str_model, training=idx_train)
+    pred_dayrange = range((dates['date_to'] - dates['date_from']).days)
+    dates['date_from'] = dates['date_from'] - timedelta(hours=(n_lookback + n_offset) * (24 // n_timestep))
+    print(f"Date_from: {dates['date_from']}, Date_to: {dates['date_to']}")
+
+    # Load prediction parameters & model
+    model = load_model(f'models//attributes//model_{str_model}.keras')
+
+    # Per-Day Predictions and calculation of daily average
+    for pred_day in pred_dayrange:
+        # Slice
+        pass
+
+
+
+    # Load prediction input
+    df_seq = prepare_inputs_lstm(str_model=str_model, idx_train=idx_train, date_dict=dates)
+    x_pred = df_seq[0]
+    lstm.ytest_startdate = df_seq[4]
+
+    # Predict with LSTM
+    y_pred = model.predict(x_pred)
+
+    # Rescale predictions
+    y_pred_rescaled = inverse_transform_minmax(df_scaled=y_pred, str_model=str_model, attributes=[label_name])
+
+    # Convert back to ts
+    df_ypred = lstm.convert_seq_to_df(seq_array=y_pred_rescaled, n_timestep=None, start_date=None)
+    ts_ypred = dailydf_to_ts(df_ypred)
+
+    # Resample & interpolate predictions
+    return ts_ypred
+
+    # Write predictions to DWH

@@ -14,11 +14,14 @@ from sklearn.neighbors import LocalOutlierFactor
 from solutil import dbqueries as db
 
 
-def get_dates_from_config(str_model: str):
+def get_dates_from_config(str_model: str, training:bool=True):
     """
     Method to load date parameters for load_input.
 
-    :param str_model: Model name as used in section header of json config.
+    :param str_model: (str) Model name as used in section header of json config.
+    :param training: (bool) Flag indicating whether in training or prediction mode. If training=True, output dict will
+                     contain dates ranging from train_start to last_day_train. If training=False, prediction mode will
+                     be entered and the dates range from first_day_calc to last_day_calc.
 
     :return: date dict containing date_from and date_to parameters in datetime format.
     """
@@ -26,13 +29,24 @@ def get_dates_from_config(str_model: str):
     with open(Path("config/config.json"), "r") as jsonfile:
         config = json.load(jsonfile)
 
-    # Get dates
-    date_from_str = config['model'][str_model]['parameters']['training']['train_start']
-    date_to_diff = int(config['model'][str_model]['parameters']['training']['last_day_train'])
+    config_short = config['model'][str_model]['parameters']['training']
 
-    date_from = datetime.strptime(date_from_str, '%d.%m.%Y')
-    date_to = datetime.now() + timedelta(days=date_to_diff)
-    date_to_clean = date_to.replace(hour=0, minute=0, second=0, microsecond=0)
+    # Get dates
+    #TODO: Check if not conversion to Etc/GMT-1 necessary before .replace()
+    if training:
+        date_from_str = config_short['train_start']
+        date_to_diff = int(config_short['last_day_train'])
+
+        date_from = datetime.strptime(date_from_str, '%d.%m.%Y')
+        date_to = datetime.now() + timedelta(days=date_to_diff)
+        date_to_clean = date_to.replace(hour=0, minute=0, second=0, microsecond=0)
+    else:
+        date_from_int = config_short['first_day_calc']
+        date_from = datetime.now() + timedelta(days=date_from_int)
+        date_from = date_from.replace(hour=0, minute=0, second=0, microsecond=0)
+        date_to_int = config_short['last_day_calc']
+        date_to_clean = datetime.now() + timedelta(days=date_to_int)
+        date_to_clean = date_to_clean.replace(hour=0, minute=0, second=0, microsecond=0)
 
     date_dict = {'date_from': date_from,
                  'date_to': date_to_clean}
@@ -75,7 +89,10 @@ def get_params_from_config(function: str, str_model: str):
             param_dict['n_lookback'] = model_config['parameters']['architecture']['n_lookback']
             param_dict['n_ahead'] = model_config['parameters']['architecture']['n_ahead']
             param_dict['n_offset'] = model_config['parameters']['architecture']['n_offset']
+
+        case 'build_lstm':
             param_dict['n_valid'] = model_config['parameters']['architecture']['n_valid']
+            param_dict['hyperparameters'] = model_config['parameters']['architecture']['hyperparameters']
 
         case 'get_n_timestep':
             param_dict['n_timestep'] = model_config['parameters']['architecture']['n_timestep']
@@ -87,10 +104,12 @@ def get_params_from_config(function: str, str_model: str):
                 if isinstance(var_value, dict) and var_value.get('is_label'):
                     lag = iter_dict[var_key]['lags'][0]
                     label_name = f'{var_key}_lag{lag}'
+                    var_name = var_key
             if 'label_name' not in locals():
                 raise NameError("No 'is_label' key found in config variable specification.")
 
             param_dict['label'] = label_name
+            param_dict['var_name'] = var_name
 
         case 'get_doyflag':
             param_dict['doy_flag'] = model_config['inputs']['include_doy']
@@ -103,7 +122,7 @@ def get_params_from_config(function: str, str_model: str):
 
 def load_input(str_model: str, date_from, date_to, n_timestep: int = None, use_day: bool = True,
                use_day_var: str = 'useday_1d_lag1', mandant_user: str = None, mandant_pwd: str = None,
-               mandant_addr: str = None):
+               mandant_addr: str = None, idx_train:bool=True):
     """
     Load feature matrix for machine learning models according to variable specification in config.json, including
     built-in time interval rescaling of timeseries.
@@ -168,7 +187,14 @@ def load_input(str_model: str, date_from, date_to, n_timestep: int = None, use_d
 
     counter = 0
 
+    # Exclude doy from loadable inputs as not coming from database
     clean_variables = [key for key in model_config['inputs'].keys() if key != 'include_doy']
+
+    # Remove label from data if not in training (productive)
+    if not idx_train:
+        var_name = get_params_from_config(function='get_label', str_model=str_model)['var_name']
+        clean_variables.remove(var_name)
+
     for input_variable in clean_variables:
         print(input_variable)
         # Extract input variable parameters
@@ -299,7 +325,6 @@ def handle_outliers(df_outlier, contamination='auto', window_length: int = 6, al
     lof = LocalOutlierFactor(contamination=contamination)
 
     # Loop over all variables
-    outliers_dict = {}
     df = df_outlier.copy()
 
     for variable in df.columns:
@@ -317,8 +342,11 @@ def handle_outliers(df_outlier, contamination='auto', window_length: int = 6, al
 
             # Compute EMWA and Assign to original Data
             df_subsample = df[variable].iloc[start_index:int_index]
-            emwa_i = df_subsample.ewm(alpha=alpha).mean().iloc[-1]
-            df.loc[outlier_i, variable] = emwa_i
+
+            # Skip outlier if subsample is emtpy -> occurs if outlier is in first row of subsample
+            if not df_subsample.empty:
+                emwa_i = df_subsample.ewm(alpha=alpha).mean().iloc[-1]
+                df.loc[outlier_i, variable] = emwa_i
 
     return df
 
