@@ -111,6 +111,20 @@ def get_params_from_config(function: str, str_model: str):
             param_dict['label'] = label_name
             param_dict['var_name'] = var_name
 
+        case 'get_labelmean':
+            iter_dict = model_config['inputs']
+
+            for var_key, var_value in iter_dict.items():
+                if isinstance(var_value, dict) and var_value.get('is_labelmean'):
+                    lag = iter_dict[var_key]['lags'][0]
+                    label_name = f'{var_key}_lag{lag}'
+                    var_name = var_key
+            if 'label_name' not in locals():
+                raise NameError("No 'is_label' key found in config variable specification.")
+
+            param_dict['label'] = label_name
+            param_dict['var_name'] = var_name
+
         case 'get_doyflag':
             param_dict['doy_flag'] = model_config['inputs']['include_doy']
 

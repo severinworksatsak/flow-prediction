@@ -113,7 +113,8 @@
           ],
           "freq": "1d",
           "time_shift": "date_from",
-          "str_table": "meanvalues"
+          "str_table": "meanvalues",
+          "is_labelmean": true
         },
         "useday_1d": {
           "ts_id": 11055632,
@@ -183,7 +184,7 @@
           "train_start": "02.03.2021",
           "last_day_train": -3,
           "first_day_calc": -1,
-          "last_day_calc": 7
+          "last_day_calc": 1
         },
         "architecture": {
           "n_valid": 50,

@@ -130,10 +130,10 @@ class simpleLSTM():
         # Separate target variable
         df_y = df[target_var]
         df_x = df.drop(columns=[target_var]) if drop_target else df
+        print(f"Length df_x: {len(df_x)} - length df_y: {len(df_y)}")
 
         # Get timestamps
         df_timestamps = df.index.tz_convert('UTC').astype(np.int64) // 10**9
-        date_freq = pd.infer_freq(df.index)
 
         # Prepare sequence variables
         x_list = []
