@@ -62,6 +62,7 @@ def prepare_inputs_lstm(str_model:str, idx_train:bool, date_dict:dict=None, repl
     and splitting into train/test & feature/label frames. Moreover, original input data can be replaced by passing a
     dict as argument.
 
+    Parameters:
     :param str_model: (str) Model name as specified under 'models' section in json config.
     :param idx_train: (bool) Boolean indicator for training / prediction mode. Idx_train affects
                       various nested methods:
@@ -227,7 +228,25 @@ def train_lstm(str_model:str, idx_train:bool=True):
 
 
 def train_svr(str_model:str, idx_train:bool=True):
+    """
+        Train SVR model based on hyperparameters specified in config file. This method prepares inputs, creates
+        and parameterizes the model instances and trains them using x_train and y_train.
 
+        Parameters:
+        :param str_model: (str) Model name as specified under 'models' section in json config.
+        :param idx_train: (bool) Boolean indicator for training / prediction mode. Idx_train affects
+                          various nested methods:
+                          - get_dates_from_config(): If idx_train = True, the date range between
+                            first_ & last_day_calc is returned and the training window otherwise.
+                          - load_inputs(): If idx_train = True, the label timeseries will be omitted
+                            from loading, otherwise the label is loaded to facilitate benchmarking.
+                          - scale_with_minmax(): If idx_train = True, scaling factors are calculated and
+                            newly saved. If false, the factors are merely reloaded from the existing pkl file.
+
+        Returns:
+        :return trained_models: (dict) Dictionary of n_timestep rained models saved as pkl file
+                                under models//attributes.
+        """
     # Get SVR inputs
     df_label, model_names = prepare_inputs_svr(str_model=str_model, idx_train=idx_train)
 
@@ -255,7 +274,28 @@ def train_svr(str_model:str, idx_train:bool=True):
 # Predict each model ---------------------------------------------------------------------------------------------------
 
 def predict_lstm(str_model:str, idx_train:bool=False, date_dict:dict=None):
+    """
+    Make predictions with pre-trained LSTM model, whose weights have been restored from pkl file.
+    Method combines input preparation, data sanitation, sequence generation of x_test, and prediction
+    for the time window specified in the config. Output is then written to data warehouse.
 
+    Parameters:
+    :param str_model: (str) Model name as specified under 'models' section in json config.
+    :param idx_train: (bool) Boolean indicator for training / prediction mode. Idx_train affects
+                      various nested methods:
+                      - get_dates_from_config(): If idx_train = True, the date range between
+                        first_ & last_day_calc is returned and the training window otherwise.
+                      - load_inputs(): If idx_train = True, the label timeseries will be omitted
+                        from loading, otherwise the label is loaded to facilitate benchmarking.
+                      - scale_with_minmax(): If idx_train = True, scaling factors are calculated and
+                        newly saved. If false, the factors are merely reloaded from the existing pkl file.
+    :param date_dict: (dict) Dictionary containing 'date_from' and 'date_to' variables either as string or
+                      datetime object. Default is None, in which case the dates are retrieved from the config.
+
+    Returns:
+    :return ts_ypred: (Series) Series of forecasted values.
+    :return writeDWH: (csv) CSV export to data warehouse for merging into specified Belvis time series.
+    """
     # Instantiate Objects
     lstm = simpleLSTM()
 
