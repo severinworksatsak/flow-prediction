@@ -376,7 +376,7 @@ def scale_with_minmax(df_features, str_model: str, idx_train: bool = True, verbo
 
     :param df_features: Dataframe containing to-be-scaled variables.
     :param str_model: Name of prediction model as occurring in config, e.g. inlet1_lstm.
-    :param idx_train: Boolean indicator for training / productive mode.
+    :param idx_train: Boolean indicator for training / prediction mode.
     :param verbose: Detail level of output print. 0 means no output print, 1 returns mins and scale weights.
 
     :return: Scaled dataframe and normalization weights in pkl file saved in attributes folder.
@@ -444,7 +444,7 @@ def inverse_transform_minmax(df_scaled, str_model: str, attributes:list, verbose
 
 
 # Split training / test set
-def split_dataframe(df_features, target_var = None, train_share: float = 0.7, shuffle:bool=False,
+def split_dataframe(df_features, target_var = None, productive:bool=False, train_share: float = 0.7, shuffle:bool=False,
                     **kwargs):
     """
     Separate target variable from feature matrix and perform train-test-split.
@@ -452,29 +452,40 @@ def split_dataframe(df_features, target_var = None, train_share: float = 0.7, sh
     Parameters:
     :param df_features: (pd.DataFrame) Feature dataframe containing both target variable and features.
     :param target_var: (str, list) Single name or list of names of the target variable(s), used for column indexing.
+    :param productive: (bool) Indicator whether method to be used in productive environment. Default is False. If true,
+                       features and labels will be separated without creating train and test sets. If false, function
+                       returns x_train, y_train, x_test, y_test.
     :param train_share: (float) Share of training data from total dataset.
+    :param shuffle: (bool) Indicator whether to shuffle observations before making the split. Default is False.
     :param kwargs: Input parameters for sklearn train_test_split function, e.g. shuffle.
 
     Returns:
     :return: x_train, x_test, y_train, y_test -> Dataframes with corresponding train / test data.
     """
     # Input Check
-    if isinstance(target_var, str):
+    if isinstance(target_var, str) or isinstance(target_var, list):
         features = df_features.drop(columns=target_var)
         label = df_features[target_var]
-    elif isinstance(target_var, list):
-        features = df_features.drop(columns=target_var)
-        label = df_features[target_var]
+    # elif isinstance(target_var, list):
+    #     features = df_features.drop(columns=target_var)
+    #     label = df_features[target_var]
     else:
         raise ValueError("Type of target_var must be either str or list. Change input accordingly.")
 
     # Remove Target Variable & Split
-    x_train, x_test, y_train, y_test = train_test_split(features,
-                                                        label,
-                                                        train_size=train_share,
-                                                        shuffle=shuffle,
-                                                        **kwargs
-                                                        )
+    if not productive:
+        x_train, x_test, y_train, y_test = train_test_split(features,
+                                                            label,
+                                                            train_size=train_share,
+                                                            shuffle=shuffle,
+                                                            **kwargs
+                                                            )
+
+    else: # In productive environment
+        x_train = features
+        y_train = label
+        x_test = None
+        y_test = None
 
     return x_train, x_test, y_train, y_test
 

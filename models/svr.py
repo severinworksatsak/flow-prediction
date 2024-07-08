@@ -133,8 +133,7 @@ class SVReg():
 
         return output_dict
 
-
-    def predict_svr(self, trained_svr:dict, x_test, date_from=None, freq:str='4h', str_model:str='inlet1_svr',
+    def predict_svr(self, trained_svr:dict, x_test, date_from=None, freq:str=None, str_model:str='inlet1_svr',
                     n_timestep:int=None):
         """
         Predict timestep for each model individually.
@@ -181,8 +180,3 @@ class SVReg():
         output_series.index = date_index
 
         return output_series
-
-
-
-
-
