@@ -11,7 +11,8 @@ from pathlib import Path
 from sklearn.model_selection import train_test_split
 from sklearn.neighbors import LocalOutlierFactor
 
-from solutil import dbqueries as db
+from models.solutil_func import get_timeseries_15min, get_timeseries_1h, get_timeseries_1d, get_eval_metrics, \
+    get_act_vs_pred_plot, get_env_variables
 
 
 def get_dates_from_config(str_model: str, training:bool=True):
@@ -120,10 +121,10 @@ def get_params_from_config(function: str, str_model: str):
                     label_name = f'{var_key}_lag{lag}'
                     var_name = var_key
             if 'label_name' not in locals():
-                raise NameError("No 'is_label' key found in config variable specification.")
+                raise NameError("No 'is_labelmean' key found in config variable specification.")
 
-            param_dict['label'] = label_name
-            param_dict['var_name'] = var_name
+            param_dict['label_mean'] = label_name
+            param_dict['meanvar_name'] = var_name
 
         case 'get_doyflag':
             param_dict['doy_flag'] = model_config['inputs']['include_doy']
@@ -135,7 +136,7 @@ def get_params_from_config(function: str, str_model: str):
 
 
 def load_input(str_model: str, date_from, date_to, n_timestep: int = None, use_day: bool = True,
-               use_day_var: str = 'useday_1d_lag1', mandant_user: str = None, mandant_pwd: str = None,
+               use_day_var: str = 'useday_1d_lag0', mandant_user: str = None, mandant_pwd: str = None,
                mandant_addr: str = None, idx_train:bool=True):
     """
     Load feature matrix for machine learning models according to variable specification in config.json, including
@@ -152,7 +153,7 @@ def load_input(str_model: str, date_from, date_to, n_timestep: int = None, use_d
     :param use_day: (bool) Flag variable to indicate whether use_day column is included in the parameter specification
                     in the json config. Default is True, in which case filtering will be performed using use_day_var.
     :param use_day_var: (str) Column name of the use_day classifier. Important: Must be final name as occurring in the
-                        output dataframe. Hence, the name is '{var_name}_lag{n_lag}'. Default is useday_1d_lag1.
+                        output dataframe. Hence, the name is '{var_name}_lag{n_lag}'. Default is useday_1d_lag0.
     :param mandant_user: (str)
     :param mandant_pwd: (str)
     :param mandant_addr: (str)
@@ -173,7 +174,7 @@ def load_input(str_model: str, date_from, date_to, n_timestep: int = None, use_d
 
     # Load Environment Variables
     if mandant_user is None:
-        env_vars = db.get_env_variables('EPAG_ENERGIE')
+        env_vars = get_env_variables('EPAG_ENERGIE')
         mandant_user = env_vars['mandant_user']
         mandant_pwd = env_vars['mandant_pwd']
         mandant_addr = env_vars['mandant_addr']
@@ -223,14 +224,14 @@ def load_input(str_model: str, date_from, date_to, n_timestep: int = None, use_d
             date_from_mod = date_from
             date_to_mod = date_to + timedelta(days=1)
 
-        # Get modified time ranges -> evade circular updating of time variables
-        date_from_mod = date_from - timedelta(days=1)
-        date_to_mod = date_to + timedelta(days=1)
+        # Get modified time ranges -> evade circular updating of time variables & ensure
+        date_from_mod = (date_from - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        date_to_mod = (date_to + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
 
         # Create initial df from scratch -> Deliberately elongated to accommodate both time_shifts
         if counter < 1:
-            date_index = pd.date_range(start=date_from_mod - timedelta(days=1),
-                                       end=date_to_mod + timedelta(days=1),
+            date_index = pd.date_range(start=date_from_mod, #- timedelta(days=1),
+                                       end=date_to_mod, #+ timedelta(days=1),
                                        tz='Etc/GMT-1',
                                        freq=f'{24 // n_timestep}h')
             df_collect = pd.DataFrame(index=date_index)
@@ -239,23 +240,26 @@ def load_input(str_model: str, date_from, date_to, n_timestep: int = None, use_d
         match model_config['inputs'][input_variable]['freq']:
             case '1h':
                 # Load daily data
-                loaded_ts = db.get_timeseries_1h(ts_id_i, date_from_mod, date_to_mod,
-                                                 mandant_user, mandant_pwd, mandant_addr)
+                loaded_ts = get_timeseries_1h(ts_id_i, date_from_mod, date_to_mod,
+                                              mandant_user, mandant_pwd, mandant_addr)
 
                 # Resample hourly data
                 resampled_ts = loaded_ts.resample(timedelta(hours=24 // n_timestep)).mean()
             case '1d':
                 # Load daily data
                 str_table = model_config['inputs'][input_variable]['str_table']
-                loaded_ts = db.get_timeseries_1d(ts_id_i, date_from_mod, date_to_mod,
-                                                 mandant_user, mandant_pwd, mandant_addr, str_table)
+                loaded_ts = get_timeseries_1d(ts_id_i, date_from_mod, date_to_mod,
+                                              mandant_user, mandant_pwd, mandant_addr, str_table)
 
                 # Resample daily data
-                resampled_ts = loaded_ts.resample(timedelta(hours=24 // n_timestep)).ffill()
+                resampled_ts = loaded_ts.resample(timedelta(hours=24 // n_timestep)).ffill(limit=n_timestep)
+                # print(f"Loaded_ts {input_variable} Head: {loaded_ts.head(5)}")
+                # print(f"{input_variable} Head: {resampled_ts.head(5)}")
+                # print(f"{input_variable} Tail: {resampled_ts.tail(5)}")
             case '15min':
                 # Load daily data
-                loaded_ts = db.get_timeseries_15min(ts_id_i, date_from_mod, date_to_mod,
-                                                    mandant_user, mandant_pwd, mandant_addr)
+                loaded_ts = get_timeseries_15min(ts_id_i, date_from_mod, date_to_mod,
+                                                 mandant_user, mandant_pwd, mandant_addr)
 
                 # Resample hourly data
                 resampled_ts = loaded_ts.resample(timedelta(hours=24 // n_timestep)).mean()
@@ -264,7 +268,7 @@ def load_input(str_model: str, date_from, date_to, n_timestep: int = None, use_d
 
         counter += 1
 
-        #TODO: Check whether if date_from needs 1 lag
+        #TODO: Check whether date_from needs 1 lag
 
         # Lag variables
         for lag in lags_i:
@@ -503,6 +507,9 @@ def dailydf_to_ts(daily_df, header:str='value'):
     daily_ts.name = header
 
     return daily_ts
+
+
+
 
 
 

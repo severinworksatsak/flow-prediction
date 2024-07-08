@@ -109,7 +109,7 @@
         "base_1d": {
           "ts_id": 11055778,
           "lags": [
-            1
+            0
           ],
           "freq": "1d",
           "time_shift": "date_from",
@@ -119,7 +119,7 @@
         "useday_1d": {
           "ts_id": 11055632,
           "lags": [
-            1
+            0
           ],
           "freq": "1d",
           "time_shift": "date_to",
@@ -184,7 +184,7 @@
           "train_start": "02.03.2021",
           "last_day_train": -3,
           "first_day_calc": -1,
-          "last_day_calc": 1
+          "last_day_calc": 3
         },
         "architecture": {
           "n_valid": 50,
@@ -225,16 +225,14 @@
         },
         "base_1d": {
           "ts_id": 11055778,
-          "lags": [
-            1
-          ],
+          "lags": [0],
           "freq": "1d",
           "time_shift": "date_from",
           "str_table": "meanvalues"
         },
         "useday_1d": {
           "ts_id": 11055632,
-          "lags": [1],
+          "lags": [0],
           "freq": "1d",
           "time_shift": "date_to",
           "str_table": "meanvalues"

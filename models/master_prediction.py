@@ -47,6 +47,7 @@ def prepare_inputs_lstm(str_model:str, idx_train:bool, date_dict:dict=None, repl
 
     # Preparation up to Scaling
     df_scaled = prepare_inputs(str_model=str_model, idx_train=idx_train, date_dict=date_dict)
+    print(f"Index df_scaled: {df_scaled.index}")
 
     if replace_data is not None:
         df_scaled.update(replace_data)
@@ -60,6 +61,8 @@ def prepare_inputs_lstm(str_model:str, idx_train:bool, date_dict:dict=None, repl
     Test data size is set to zero since i) training process no longer needs testing data, instead relying on validation 
     sets directly sliced in the DeepLearner module, and ii) holistic usage of prepared inputs for prediction purposes.
     '''
+    # print(f"df_scaled head: {df_scaled.head()}")
+    # print(f"df_scaled tail: {df_scaled.tail()}")
     df_seq = lstm.generate_sequences(df=df_scaled,
                                      target_var=target_var,
                                      n_lookback=n_lookback,
@@ -138,7 +141,7 @@ def train_svr():
 
 # Predict each model ---------------------------------------------------------------------------------------------------
 
-def predict_lstm(str_model:str, idx_train:bool=False):
+def predict_lstm(str_model:str, idx_train:bool=False, date_dict:dict=None):
 
     # Instantiate Objects
     lstm = simpleLSTM()
@@ -151,15 +154,17 @@ def predict_lstm(str_model:str, idx_train:bool=False):
     n_offset = sequence_params['n_offset']
 
     # Get modified dates -> elongate x_test so that first prediction will be for first_calc_day
-    dates = get_dates_from_config(str_model=str_model, training=idx_train)
-    dates['date_from'] = dates['date_from'] - timedelta(hours=(n_lookback + n_offset) * (24 // n_timestep))
-    print(f"Date_from: {dates['date_from']}, Date_to: {dates['date_to']}")
+    if date_dict is None:
+        date_dict = get_dates_from_config(str_model=str_model, training=idx_train)
+
+    date_dict['date_from'] = date_dict['date_from'] - timedelta(hours=(n_lookback + n_offset) * (24 // n_timestep))
+    print(f"Date_from: {date_dict['date_from']}, Date_to: {date_dict['date_to']}")
 
     # Load prediction parameters & model
     model = load_model(f'models//attributes//model_{str_model}.keras')
 
     # Load prediction input
-    df_seq = prepare_inputs_lstm(str_model=str_model, idx_train=idx_train, date_dict=dates)
+    df_seq = prepare_inputs_lstm(str_model=str_model, idx_train=idx_train, date_dict=date_dict)
     x_pred = df_seq[0]
     lstm.ytest_startdate = df_seq[4]
 
@@ -186,7 +191,7 @@ def predict_lstm_daywise(str_model:str, idx_train:bool=False):
 
     # Get config parameters
     label_name = get_params_from_config(function='get_label', str_model=str_model)['label']
-    labelmean_name = get_params_from_config(function='get_labelmean', str_model=str_model)
+    labelmean_name = get_params_from_config(function='get_labelmean', str_model=str_model)['meanvar_name']
     n_timestep = get_params_from_config(function='get_n_timestep', str_model=str_model)['n_timestep']
     sequence_params = get_params_from_config(function='lstm_sequence', str_model=str_model)
     n_lookback = sequence_params['n_lookback']
@@ -202,20 +207,26 @@ def predict_lstm_daywise(str_model:str, idx_train:bool=False):
 
     # Per-Day Predictions and calculation of daily average
     daymean_replace = None
-    ypred_series = pd.Series(dtype=float)
+    ypred_series = pd.Series()
+    series_list = []
 
     for pred_day in pred_dayrange:
+
+        # Create strawman date dict -> evade circular updating of date ranges
+        mod_dates = {}
+
         # Get daily slice
-        dates['date_to'] = pred_startdate + timedelta(days=pred_day)
-        dates['date_from'] = dates['date_from'] - timedelta(
+        mod_dates['date_to'] = pred_startdate + timedelta(days=pred_day + 1)
+        mod_dates['date_from'] = dates['date_from'] - timedelta(
             hours=(n_lookback + n_offset) * (24 // n_timestep)) + timedelta(days=pred_day)
-        print(f"Date_from: {dates['date_from']}, Date_to: {dates['date_to']}")
+        print(f"Prediction day: {pred_day}")
+        print(f"Date_from: {mod_dates['date_from']}, Date_to: {mod_dates['date_to']}")
 
 
         # Load prediction input
         df_seq = prepare_inputs_lstm(str_model=str_model,
                                      idx_train=idx_train,
-                                     date_dict=dates,
+                                     date_dict=mod_dates,
                                      replace_data=daymean_replace
                                      )
         x_pred = df_seq[0]
@@ -227,8 +238,8 @@ def predict_lstm_daywise(str_model:str, idx_train:bool=False):
         # Calculate day means of label and collect values to replace old daymeans in prepare_inputs_lstm
         df_ymean = lstm.convert_seq_to_df(seq_array=y_pred, n_timestep=None, start_date=None)
         ts_ymean = dailydf_to_ts(df_ymean)
-        df_ymean[labelmean_name] = [ts_ymean.mean() for i in range(len(ts_ymean))]
-        daymean_replace = df_ymean[labelmean_name]
+        ts_ymean[labelmean_name] = [ts_ymean.mean() for i in range(len(ts_ymean))]
+        daymean_replace = ts_ymean[labelmean_name]
 
         # Rescale predictions
         y_pred_rescaled = inverse_transform_minmax(df_scaled=y_pred, str_model=str_model, attributes=[label_name])
@@ -236,7 +247,9 @@ def predict_lstm_daywise(str_model:str, idx_train:bool=False):
         # Convert predictions back to ts
         df_ypred = lstm.convert_seq_to_df(seq_array=y_pred_rescaled, n_timestep=None, start_date=None)
         ts_ypred = dailydf_to_ts(df_ypred)
-        ypred_series = ypred_series.add(ts_ypred)
+        series_list.append(ts_ypred)
+
+    ypred_series = pd.concat(series_list)
 
     # Resample & interpolate predictions
     return ypred_series
