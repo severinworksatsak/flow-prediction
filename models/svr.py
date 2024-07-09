@@ -17,7 +17,8 @@ class SVReg():
 
     # Arrange model input
     @staticmethod
-    def build_model_input(df, target_var:str, str_model:str, n_offset:int=None, n_timestep:int=None):
+    def build_model_input(df, target_var:str, str_model:str, n_offset:int=None, n_timestep:int=None,
+                          idx_train:bool=True):
         """
         Create new target variables for each timestep-SVR model. As SVR output is single-length, a full-day prediction
         requires the training of n_timestep models and thus n_timestep different target variables.
@@ -47,6 +48,7 @@ class SVReg():
 
         # Create target variables for every model
         name_list = []
+        df = df.copy()
 
         for timestep in range(n_timestep):
             # Individual model parameters
@@ -56,12 +58,13 @@ class SVReg():
             y_name = f"y_{model_name}"
             name_list.append(y_name)
 
-            # Lag target variable & remove starting NAs
-            df[y_name] = df[target_var].shift(lag)
-            df[y_name] = df[y_name].bfill()
+            if idx_train:
+                # Lag target variable & remove starting NAs
+                df[y_name] = df[target_var].shift(lag)
+                df[y_name] = df[y_name].bfill()
 
         # Drop original label & remove trailing NAs
-        df_save = df.copy().drop(columns=[target_var])
+        df_save = df.drop(columns=[target_var]) #if idx_train else df
         df_save.dropna(inplace=True)
 
         return df_save, name_list
@@ -170,6 +173,7 @@ class SVReg():
         for count, model_i in enumerate(trained_svr.keys()):
             # Shifted test features for each model
             x_test_i = x_test.iloc[count::n_timestep]
+            print(f"features x_test_i: {x_test_i.columns}")
 
             # Predict with Model
             output_df[model_i] = pd.Series(trained_svr[model_i].predict(x_test_i))

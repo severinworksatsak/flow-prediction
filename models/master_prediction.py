@@ -11,6 +11,19 @@ import pandas as pd
 from datetime import datetime, timedelta
 
 
+class ModelDispatcher:
+
+    def __init__(self):
+        pass
+
+
+
+
+
+
+
+
+
 def prepare_inputs(str_model:str, idx_train:bool, date_dict:dict=None):
     """
     Base function for model dispatch. Retrieves feature and labels in one data array as
@@ -49,7 +62,6 @@ def prepare_inputs(str_model:str, idx_train:bool, date_dict:dict=None):
 
     # Scaling with MinMax (idx_train vs. predict)
     df_scaled = scale_with_minmax(df_features=df_handled, str_model=str_model, idx_train=idx_train, verbose=0)
-    print(f"df_scaled: {df_scaled.head()}")
 
     return df_scaled
 
@@ -157,13 +169,17 @@ def prepare_inputs_svr(str_model:str, idx_train:bool, date_dict:dict=None):
     # Preparation up to Scaling
     df_scaled = prepare_inputs(str_model=str_model, idx_train=idx_train, date_dict=date_dict)
     # print(f"df_scaled prepare_inputs_svr: {df_scaled.head()}")
+    # print(f"features df_scaled: {df_scaled.columns}")
 
     # Build SVR Model Input
     svr = SVReg()
     df_label, model_names = svr.build_model_input(df=df_scaled,
                                                   target_var=target_var,
                                                   str_model=str_model,
-                                                  n_offset=n_offset)
+                                                  n_offset=n_offset,
+                                                  idx_train=idx_train
+                                                  )
+    # print(f"features df_label: {df_label.columns}")
 
 
     return df_label, model_names
@@ -254,9 +270,6 @@ def train_svr(str_model:str, idx_train:bool=True):
     x_train = split_dataframe(df_features=df_label, target_var=model_names, productive=True)[0]
     y_train = split_dataframe(df_features=df_label, target_var=model_names, productive=True)[2]
 
-    print(f"x_train: {x_train.head()}")
-    print(f"y_train: {y_train.head()}")
-
     # Generate and Parameterize Models
     svr = SVReg()
     models = svr.build_svr(str_model='inlet1_svr')
@@ -264,9 +277,11 @@ def train_svr(str_model:str, idx_train:bool=True):
     # Train models
     trained_models = svr.train_svr(svr_dict=models, x_train=x_train, y_train=y_train)
 
-    # Save models as pickle file
-    with open(f'models//attributes//trained_dict_{str_model}.pkl', 'wb') as file:
+    # Save models as pickle files
+    with open(f'models//attributes//{str_model}_trained_dict.pkl', 'wb') as file:
         pickle.dump(trained_models, file)
+    with open(f'models//attributes//{str_model}_feature_order.pkl', 'wb') as file:
+        pickle.dump(x_train.columns, file) # Necessary because features in prediction need to be in same order
 
     return trained_models
 
@@ -417,22 +432,29 @@ def forecast_svr(str_model:str, idx_train:bool=False, date_dict:dict=None): # di
 
     # Get SVR inputs
     df_label, model_names = prepare_inputs_svr(str_model=str_model, idx_train=idx_train)
-    print(f"df_label: {df_label}")
-    print(f"model_names: {model_names}")
+    # print(f"df_label features: {df_label.columns}")
+    # print(f"model_names: {model_names}")
 
     # Split features and labels
-    x_pred = split_dataframe(df_features=df_label, target_var=model_names, productive=True)[0]
+    x_pred = df_label.copy() #split_dataframe(df_features=df_label, target_var=model_names, productive=True)[0]
 
-    # Load models
-    with open(f'models//attributes//trained_dict_{str_model}.pkl', 'rb') as file:
+    # Load models & feature order
+    with open(f'models//attributes//{str_model}_trained_dict.pkl', 'rb') as file:
         trained_models = pickle.load(file)
 
-    print(f"trained models: {trained_models}")
-    print(f"x_pred: {x_pred.head()}")
+    with open(f'models//attributes//{str_model}_feature_order.pkl', 'rb') as file:
+        feature_order = pickle.load(file)
+
+    x_pred_reorder = x_pred.reindex(columns=feature_order)
+
+    # print(f"feature order: {feature_order}")
+    # print(f"trained models: {trained_models}")
+    # print(f"x_pred: {x_pred.head()}")
+    # print(f"features: {x_pred.columns}")
 
     # Instantiate SVR object
     svr = SVReg()
-    y_pred = svr.predict_svr(trained_svr=trained_models, x_test=x_pred, str_model=str_model)
+    y_pred = svr.predict_svr(trained_svr=trained_models, x_test=x_pred_reorder, str_model=str_model)
 
     # Rescale Predictions
     y_pred_rescaled = inverse_transform_minmax(df_scaled=y_pred, str_model=str_model, attributes=[label_name])

@@ -306,6 +306,7 @@ def transform_dayofyear(df):
 
     :return: Input pd.DataFrame with amended doy_sin and doy_cos features.
     """
+    df = df.copy()
     date_index = df.index
 
     # Get sinus wave
@@ -322,7 +323,7 @@ def transform_dayofyear(df):
     df['yearday_sin'] = sin_wave
     df['yearday_cos'] = cos_wave
 
-    return df.copy()
+    return df
 
 
 # Outlier Detection
