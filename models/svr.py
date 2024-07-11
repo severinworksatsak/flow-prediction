@@ -64,7 +64,7 @@ class SVReg():
                 df[y_name] = df[y_name].bfill()
 
         # Drop original label & remove trailing NAs
-        df_save = df.drop(columns=[target_var]) #if idx_train else df
+        df_save = df.drop(columns=[target_var])
         df_save.dropna(inplace=True)
 
         return df_save, name_list
@@ -173,7 +173,6 @@ class SVReg():
         for count, model_i in enumerate(trained_svr.keys()):
             # Shifted test features for each model
             x_test_i = x_test.iloc[count::n_timestep]
-            print(f"features x_test_i: {x_test_i.columns}")
 
             # Predict with Model
             output_df[model_i] = pd.Series(trained_svr[model_i].predict(x_test_i))

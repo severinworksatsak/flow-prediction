@@ -89,9 +89,7 @@
         }
       },
       "outputs": {
-        "model": {
-          "ts_id": 11055610
-        }
+        "ts_id": 11055610
       }
     },
     "inlet1_lstm": {
@@ -128,7 +126,8 @@
         "temp_1h": {
           "ts_id": 10253447,
           "lags": [
-            0, 1
+            0,
+            1
           ],
           "freq": "1h",
           "time_shift": "date_from"
@@ -136,7 +135,9 @@
         "glob_1h": {
           "ts_id": 10255110,
           "lags": [
-            1, 2, 3
+            1,
+            2,
+            3
           ],
           "freq": "1h",
           "time_shift": "date_from"
@@ -144,36 +145,48 @@
         "rain_1h": {
           "ts_id": 10253455,
           "lags": [
-            0, 1
+            0,
+            1
           ],
           "freq": "1h",
           "time_shift": "date_from"
         },
         "bf15_1h": {
           "ts_id": 11010900,
-          "lags": [0],
+          "lags": [
+            0
+          ],
           "freq": "1h",
           "time_shift": "date_from"
         },
         "schmelz_1h": {
           "ts_id": 11010892,
-          "lags": [0, 1],
+          "lags": [
+            0,
+            1
+          ],
           "freq": "1h",
           "time_shift": "date_from"
         },
         "rain_1h_prog": {
           "ts_id": 11011951,
-          "lags": [-6],
+          "lags": [
+            -6
+          ],
           "freq": "1h"
         },
         "glob_1h_prog": {
           "ts_id": 11011947,
-          "lags": [-6],
+          "lags": [
+            -6
+          ],
           "freq": "1h"
         },
         "temp_1h_prog": {
           "ts_id": 11011939,
-          "lags": [-6],
+          "lags": [
+            -6
+          ],
           "freq": "1h"
         }
       },
@@ -184,7 +197,7 @@
           "train_start": "02.03.2021",
           "last_day_train": -3,
           "first_day_calc": 0,
-          "last_day_calc": 3
+          "last_day_calc": 7
         },
         "architecture": {
           "n_valid": 50,
@@ -206,9 +219,7 @@
         }
       },
       "outputs": {
-        "model": {
-          "ts_id": 11055610
-        }
+        "ts_id": 13597910
       }
     },
     "inlet1_svr": {
@@ -225,7 +236,9 @@
         },
         "base_1d": {
           "ts_id": 11055778,
-          "lags": [0],
+          "lags": [
+            0
+          ],
           "freq": "1d",
           "time_shift": "date_from",
           "str_table": "meanvalues",
@@ -233,7 +246,9 @@
         },
         "useday_1d": {
           "ts_id": 11055632,
-          "lags": [0],
+          "lags": [
+            0
+          ],
           "freq": "1d",
           "time_shift": "date_to",
           "str_table": "meanvalues"
@@ -325,8 +340,79 @@
           }
         },
         "outputs": {
-          "model": {
-            "ts_id": 11055610
+          "ts_id": 13597919
+        }
+      }
+    },
+    "inlet1_ensemble": {
+      "inputs": {
+        "include_doy": false,
+        "base": {
+          "ts_id": 11127586,
+          "lags": [
+            0
+          ],
+          "freq": "1h",
+          "time_shift": "date_from",
+          "is_label": true
+        },
+        "lstm": {
+          "ts_id": 13597910,
+          "lags": [
+            0
+          ],
+          "freq": "1h",
+          "time_shift": "date_from"
+        },
+        "svr": {
+          "ts_id": 13597919,
+          "lags": [
+            0
+          ],
+          "freq": "1h",
+          "time_shift": "date_from"
+        },
+        "rnn": {
+          "ts_id": 11055610,
+          "lags": [
+            0
+          ],
+          "freq": "1h",
+          "time_shift": "date_from"
+        },
+        "bf15_1h": {
+          "ts_id": 11010900,
+          "lags": [
+            0
+          ],
+          "freq": "1h",
+          "time_shift": "date_from"
+        },
+        "useday_1d": {
+          "ts_id": 11055632,
+          "lags": [
+            0
+          ],
+          "freq": "1d",
+          "time_shift": "date_to",
+          "str_table": "meanvalues"
+        }
+      },
+      "parameters": {
+        "training": {
+          "weekday_train": 6,
+          "active_calc": 1,
+          "train_start": "02.03.2021",
+          "last_day_train": -3,
+          "first_day_calc": 0,
+          "last_day_calc": 7
+        },
+        "architecture": {
+          "hyperparameters": {
+            "max_depth": 16,
+            "min_samples_leaf": 8,
+            "min_samples_split": 4,
+            "n_estimators": 100
           }
         }
       }

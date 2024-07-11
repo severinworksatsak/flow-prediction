@@ -1,11 +1,11 @@
 import pandas as pd
-import numpy as np
 from datetime import datetime, timedelta
 from pytz import timezone
 from math import sin, cos, pi
 from calendar import monthrange
 import pickle
-import configparser
+from os import path
+import csv
 import json
 from pathlib import Path
 from sklearn.model_selection import train_test_split
@@ -128,6 +128,9 @@ def get_params_from_config(function: str, str_model: str):
 
         case 'get_doyflag':
             param_dict['doy_flag'] = model_config['inputs']['include_doy']
+
+        case 'build_ensemble':
+            param_dict['hyperparameters'] = model_config['parameters']['architecture']['hyperparameters']
 
         case _:
             raise ValueError('Provided function name is not available.')
@@ -467,9 +470,6 @@ def split_dataframe(df_features, target_var = None, productive:bool=False, train
     if isinstance(target_var, str) or isinstance(target_var, list):
         features = df_features.drop(columns=target_var)
         label = df_features[target_var]
-    # elif isinstance(target_var, list):
-    #     features = df_features.drop(columns=target_var)
-    #     label = df_features[target_var]
     else:
         raise ValueError("Type of target_var must be either str or list. Change input accordingly.")
 
@@ -519,6 +519,82 @@ def dailydf_to_ts(daily_df, header:str='value'):
     daily_ts.name = header
 
     return daily_ts
+
+
+def write_DWH(str_path:str, str_tsname:str, str_property:str, str_unit:str,
+              df_timeseries:pd.DataFrame, filename=None):
+    """
+    Write time series to Belvis Datawarehouse via CSV Export.
+
+    Parameters:
+    :param str_path:
+    :param str_tsname:
+    :param str_property:
+    :param str_unit:
+    :param df_timeseries:
+    :param filename:
+
+    Returns:
+    :return:
+    """
+    bool_copy = False
+
+    if str_path.find('EPAG_PFM') >= 1 and str_path.find('srvedm11') >= 1:
+        str_path_old = str_path.replace('srvedm11', 'srvedm11')
+        bool_copy = True
+
+    # Winterzeit!
+
+    col_name = df_timeseries.columns[0]
+    if filename is None:
+        datestr_now = datetime.now().strftime("%Y%m%d_%H%M%S")
+        if str_property is None:
+            filename = f'{datestr_now}_{str_tsname}_DWH.csv'
+        else:
+            filename = f'{datestr_now}_{str_tsname}_{str_property}_DWH.csv'
+
+    with open(path.join(str_path, filename), 'wt', newline='') as csv_file:
+        csv_writer = csv.writer(csv_file, delimiter=";")
+
+        # Header
+        csv_writer.writerow([f"Timeseries: '{str_tsname}'"])
+        csv_writer.writerow([f"Property: {str_property}"])
+        csv_writer.writerow([f"Unit: {str_unit}"])
+        csv_writer.writerow([f"From: {df_timeseries.index[0].strftime('%d.%m.%Y %H:%M:%S')}"])
+        csv_writer.writerow([f"To: {df_timeseries.index[len(df_timeseries.index) - 1].strftime('%d.%m.%Y %H:%M:%S')}"])
+        csv_writer.writerow([])
+        csv_writer.writerow(["AsOf", "Knowledge", "Value", "State", ""])
+
+        # Zeilen
+        for i_row in range(len(df_timeseries.index)):
+            csv_writer.writerow([f"{df_timeseries.index[i_row].strftime('%d.%m.%Y %H:%M:%S')}",
+                                 f"{datetime.now().strftime('%d.%m.%Y %H:%M:%S')}",
+                                 f"{df_timeseries[col_name].iloc[i_row]}", "-", ""]
+                                )
+
+    if bool_copy == True:
+        with open(path.join(str_path_old, filename), 'wt', newline='') as csv_file:
+            csv_writer = csv.writer(csv_file, delimiter=";")
+
+            # Header
+            csv_writer.writerow([f"Timeseries: '{str_tsname}'"])
+            csv_writer.writerow([f"Property: {str_property}"])
+            csv_writer.writerow([f"Unit: {str_unit}"])
+            csv_writer.writerow([f"From: {df_timeseries.index[0].strftime('%d.%m.%Y %H:%M:%S')}"])
+            csv_writer.writerow(
+                [f"To: {df_timeseries.index[len(df_timeseries.index) - 1].strftime('%d.%m.%Y %H:%M:%S')}"])
+            csv_writer.writerow([])
+            csv_writer.writerow(["AsOf", "Knowledge", "Value", "State", ""])
+
+            # Zeilen
+            for i_row in range(len(df_timeseries.index)):
+                csv_writer.writerow([f"{df_timeseries.index[i_row].strftime('%d.%m.%Y %H:%M:%S')}",
+                                     f"{datetime.now().strftime('%d.%m.%Y %H:%M:%S')}",
+                                     f"{df_timeseries[col_name].iloc[i_row]}", "-", ""]
+                                    )
+
+    idx_success = True
+    return idx_success
 
 
 

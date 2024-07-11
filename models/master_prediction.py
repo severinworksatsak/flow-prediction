@@ -1,27 +1,16 @@
 from models.utility import load_input, scale_with_minmax, get_dates_from_config, handle_outliers, \
     get_params_from_config, dailydf_to_ts, inverse_transform_minmax, transform_dayofyear, \
-    split_dataframe
+    split_dataframe, write_DWH
 from models.lstm import simpleLSTM
 from models.deeplearner import DeepLearner
 from models.svr import SVReg
+from sklearn.ensemble import RandomForestRegressor
 
 from keras.models import save_model, load_model
 import pickle
 import pandas as pd
 from datetime import datetime, timedelta
-
-
-class ModelDispatcher:
-
-    def __init__(self):
-        pass
-
-
-
-
-
-
-
+import os
 
 
 def prepare_inputs(str_model:str, idx_train:bool, date_dict:dict=None):
@@ -122,8 +111,6 @@ def prepare_inputs_lstm(str_model:str, idx_train:bool, date_dict:dict=None, repl
     Test data size is set to zero since i) training process no longer needs testing data, instead relying on validation 
     sets directly sliced in the DeepLearner module, and ii) holistic usage of prepared inputs for prediction purposes.
     '''
-    # print(f"df_scaled head: {df_scaled.head()}")
-    # print(f"df_scaled tail: {df_scaled.tail()}")
     df_seq = lstm.generate_sequences(df=df_scaled,
                                      target_var=target_var,
                                      n_lookback=n_lookback,
@@ -164,12 +151,9 @@ def prepare_inputs_svr(str_model:str, idx_train:bool, date_dict:dict=None):
     # Get config parameters
     target_var = get_params_from_config(function='get_label', str_model=str_model)['label']
     n_offset = get_params_from_config(function='build_svr', str_model=str_model)['n_offset']
-    svr_hyperparams = get_params_from_config(function='build_svr', str_model=str_model)['hyperparameters']
 
     # Preparation up to Scaling
     df_scaled = prepare_inputs(str_model=str_model, idx_train=idx_train, date_dict=date_dict)
-    # print(f"df_scaled prepare_inputs_svr: {df_scaled.head()}")
-    # print(f"features df_scaled: {df_scaled.columns}")
 
     # Build SVR Model Input
     svr = SVReg()
@@ -179,10 +163,9 @@ def prepare_inputs_svr(str_model:str, idx_train:bool, date_dict:dict=None):
                                                   n_offset=n_offset,
                                                   idx_train=idx_train
                                                   )
-    # print(f"features df_label: {df_label.columns}")
-
 
     return df_label, model_names
+
 
 
 # Train each Model -----------------------------------------------------------------------------------------------------
@@ -236,10 +219,10 @@ def train_lstm(str_model:str, idx_train:bool=True):
                                      )
 
     # Save model and training history / params
-    save_model(trained_lstm[0], f'models//attributes//model_{str_model}.keras')
-    with open(f'models//attributes//history_{str_model}.pkl', 'wb') as file:
+    save_model(trained_lstm[0],f'models//attributes//{str_model}_trained_model.keras')
+    with open(f'models//attributes//{str_model}_history.pkl', 'wb') as file:
         pickle.dump(trained_lstm[1].history, file)
-    with open(f'models//attributes//params_{str_model}.pkl', 'wb') as file:
+    with open(f'models//attributes//{str_model}_params.pkl', 'wb') as file:
         pickle.dump(trained_lstm[1].params, file)
 
 
@@ -286,9 +269,38 @@ def train_svr(str_model:str, idx_train:bool=True):
     return trained_models
 
 
+def train_ensemble(str_model:str, idx_train:bool, date_dict:dict=None):
+
+    # Get Config Parameters
+    target_var = get_params_from_config(function='get_label', str_model=str_model)['label']
+    hyperparameters = get_params_from_config(function='build_ensemble', str_model=str_model)['hyperparameters']
+
+    # Prepare Inputs
+    df_scaled = prepare_inputs(str_model=str_model, idx_train=idx_train, date_dict=date_dict)
+
+    # Split Dataframe
+    x_train = split_dataframe(df_features=df_scaled, target_var=target_var, productive=True)[0]
+    y_train = split_dataframe(df_features=df_scaled, target_var=target_var, productive=True)[2]
+
+    # Build Random Forest Regressor
+    rfr = RandomForestRegressor(**hyperparameters)
+
+    # Train Random Forest Regressor
+    trained_rfr = rfr.fit(x_train, y_train)
+
+    # Save model & feature order
+    with open(f'models//attributes//{str_model}_trained_model.pkl', 'wb') as file:
+        pickle.dump(trained_rfr, file)
+    with open(f'models//attributes//{str_model}_feature_order.pkl', 'wb') as file:
+        pickle.dump(x_train.columns, file) # Necessary because features in prediction need to be in same order
+
+    return trained_rfr
+
+
+
 # Predict each model ---------------------------------------------------------------------------------------------------
 
-def predict_lstm(str_model:str, idx_train:bool=False, date_dict:dict=None):
+def predict_lstm(str_model:str, idx_train:bool=False, date_dict:dict=None, writeDWH:bool=False):
     """
     Make predictions with pre-trained LSTM model, whose weights have been restored from pkl file.
     Method combines input preparation, data sanitation, sequence generation of x_test, and prediction
@@ -326,10 +338,9 @@ def predict_lstm(str_model:str, idx_train:bool=False, date_dict:dict=None):
         date_dict = get_dates_from_config(str_model=str_model, training=idx_train)
 
     date_dict['date_from'] = date_dict['date_from'] - timedelta(hours=(n_lookback + n_offset) * (24 // n_timestep))
-    print(f"Date_from: {date_dict['date_from']}, Date_to: {date_dict['date_to']}")
 
     # Load prediction parameters & model
-    model = load_model(f'models//attributes//model_{str_model}.keras')
+    model = load_model(f'models//attributes//{str_model}_trained_model.keras')
 
     # Load prediction input
     df_seq = prepare_inputs_lstm(str_model=str_model, idx_train=idx_train, date_dict=date_dict)
@@ -347,12 +358,31 @@ def predict_lstm(str_model:str, idx_train:bool=False, date_dict:dict=None):
     ts_ypred = dailydf_to_ts(df_ypred)
 
     # Resample & interpolate predictions
+    if writeDWH:
+        # Resample to 1h
+        ts_ypred_1h = ts_ypred.resample('1h').interpolate()
+        df_ypred_1h = ts_ypred_1h.to_frame()
+
+        # Write normal predictions to DWH
+        inlet_n = str_model.split('_')[0].capitalize()
+        str_algo = str_model.split('_')[1].upper()
+        str_pred = 'Prediction'
+        ts_name = '_'.join([inlet_n, str_pred, str_algo])
+
+        write_DWH(str_path=os.path.join(r'\\srvedm11', 'Import', 'Messdaten', 'EPAG_Energie', 'DWH_EX_60'),
+                  str_tsname=ts_name,
+                  str_property='Python',
+                  str_unit='m/3',
+                  df_timeseries=df_ypred_1h
+                  )
+
+        # D+1 Prediction to DWH
+        #TODO: D+1 prediction calculation
+
     return ts_ypred
 
-    # Write predictions to DWH
 
-
-def predict_lstm_daywise(str_model:str, idx_train:bool=False):
+def predict_lstm_daywise(str_model:str, idx_train:bool=False, writeDWH:bool=False):
 
     # Instantiate Objects
     lstm = simpleLSTM()
@@ -371,7 +401,7 @@ def predict_lstm_daywise(str_model:str, idx_train:bool=False):
     pred_startdate = dates['date_from']
 
     # Load prediction parameters & model
-    model = load_model(f'models//attributes//model_{str_model}.keras')
+    model = load_model(f'models//attributes//{str_model}_trained_model.keras')
 
     # Per-Day Predictions and calculation of daily average
     daymean_replace = None
@@ -387,9 +417,6 @@ def predict_lstm_daywise(str_model:str, idx_train:bool=False):
         mod_dates['date_to'] = pred_startdate + timedelta(days=pred_day + 1)
         mod_dates['date_from'] = dates['date_from'] - timedelta(
             hours=(n_lookback + n_offset) * (24 // n_timestep)) + timedelta(days=pred_day)
-        print(f"Prediction day: {pred_day}")
-        print(f"Date_from: {mod_dates['date_from']}, Date_to: {mod_dates['date_to']}")
-
 
         # Load prediction input
         df_seq = prepare_inputs_lstm(str_model=str_model,
@@ -419,24 +446,38 @@ def predict_lstm_daywise(str_model:str, idx_train:bool=False):
 
     ypred_series = pd.concat(series_list)
 
-    # Resample & interpolate predictions
-    return ypred_series
-
     # Write predictions to DWH
+    if writeDWH:
+        # Resample to 1h
+        ts_ypred_1h = ypred_series.resample('1h').interpolate()
+        df_ypred_1h = ts_ypred_1h.to_frame()
+
+        # Write normal predictions to DWH
+        inlet_n = str_model.split('_')[0].capitalize()
+        str_algo = str_model.split('_')[1].upper()
+        str_pred = 'Prediction'
+        ts_name = '_'.join([inlet_n, str_pred, str_algo])
+
+        write_DWH(str_path=os.path.join(r'\\srvedm11', 'Import', 'Messdaten', 'EPAG_Energie', 'DWH_EX_60'),
+                  str_tsname=ts_name,
+                  str_property='Python',
+                  str_unit='m/3',
+                  df_timeseries=df_ypred_1h
+                  )
+
+        # D+1 Prediction to DWH
+        #TODO: D+1 prediction calculation
+
+        return ypred_series
 
 
-def forecast_svr(str_model:str, idx_train:bool=False, date_dict:dict=None): # different naming due to svr.predict_svr
+def forecast_svr(str_model:str, idx_train:bool=False, writeDWH:bool=False): # different naming due to svr.predict_svr
 
     # Get Config Parameters
     label_name = get_params_from_config(function='get_label', str_model=str_model)['label']
 
     # Get SVR inputs
-    df_label, model_names = prepare_inputs_svr(str_model=str_model, idx_train=idx_train)
-    # print(f"df_label features: {df_label.columns}")
-    # print(f"model_names: {model_names}")
-
-    # Split features and labels
-    x_pred = df_label.copy() #split_dataframe(df_features=df_label, target_var=model_names, productive=True)[0]
+    x_pred, model_names = prepare_inputs_svr(str_model=str_model, idx_train=idx_train)
 
     # Load models & feature order
     with open(f'models//attributes//{str_model}_trained_dict.pkl', 'rb') as file:
@@ -445,12 +486,10 @@ def forecast_svr(str_model:str, idx_train:bool=False, date_dict:dict=None): # di
     with open(f'models//attributes//{str_model}_feature_order.pkl', 'rb') as file:
         feature_order = pickle.load(file)
 
-    x_pred_reorder = x_pred.reindex(columns=feature_order)
+    date_index = x_pred.index
 
-    # print(f"feature order: {feature_order}")
-    # print(f"trained models: {trained_models}")
-    # print(f"x_pred: {x_pred.head()}")
-    # print(f"features: {x_pred.columns}")
+    # Ensure same column order as in training -> requirement of sklearn SVR object
+    x_pred_reorder = x_pred.reindex(columns=feature_order)
 
     # Instantiate SVR object
     svr = SVReg()
@@ -458,6 +497,83 @@ def forecast_svr(str_model:str, idx_train:bool=False, date_dict:dict=None): # di
 
     # Rescale Predictions
     y_pred_rescaled = inverse_transform_minmax(df_scaled=y_pred, str_model=str_model, attributes=[label_name])
+    y_pred_rescaled.index = date_index
+
+    # Write prediction to DWH
+    if writeDWH:
+        # Resample to 1h
+        ts_ypred_1h = y_pred_rescaled.resample('1h').interpolate()
+        df_ypred_1h = ts_ypred_1h.to_frame()
+
+        # Write normal predictions to DWH
+        inlet_n = str_model.split('_')[0].capitalize()
+        str_algo = str_model.split('_')[1].upper()
+        str_pred = 'Prediction'
+        ts_name = '_'.join([inlet_n, str_pred, str_algo])
+
+        write_DWH(str_path=os.path.join(r'\\srvedm11', 'Import', 'Messdaten', 'EPAG_Energie', 'DWH_EX_60'),
+                  str_tsname=ts_name,
+                  str_property='Python',
+                  str_unit='m/3',
+                  df_timeseries=df_ypred_1h
+                  )
 
     return y_pred_rescaled
+
+
+def predict_ensemble(str_model:str, idx_train=False, date_dict:dict=None, writeDWH:bool=False):
+
+    # Load model & feature_order
+    with open(f'models//attributes//{str_model}_trained_model.pkl', 'rb') as file:
+        trained_model = pickle.load(file)
+    with open(f'models//attributes//{str_model}_feature_order.pkl', 'rb') as file:
+        feature_order = pickle.load(file)
+
+    # Get Parameters from Config
+    target_var = get_params_from_config(function='get_label', str_model=str_model)['label']
+
+    # Prepare inputs
+    df_scaled = prepare_inputs(str_model=str_model, idx_train=idx_train, date_dict=date_dict)
+    date_index = df_scaled.index
+    x_pred = split_dataframe(df_features=df_scaled, target_var=target_var, productive=True)[0]
+
+    # Ensure same column order as in training -> requirement of sklearn RFR object
+    x_pred_reorder = x_pred.reindex(columns=feature_order)
+
+    # Predict Ensemble
+    y_pred = trained_model.predict(x_pred_reorder)
+
+    # Rescale Predictions
+    y_pred_rescaled = inverse_transform_minmax(df_scaled=y_pred, str_model=str_model, attributes=[target_var])
+    ts_ypred = pd.Series(y_pred_rescaled, index=date_index, name='pred_ensemble')
+
+    # if writeDWH:
+    #     # Resample to 1h
+    #     ts_ypred_1h = ts_ypred.resample('1h').interpolate()
+    #     df_ypred_1h = ts_ypred_1h.to_frame()
+    #
+    #     # Write normal predictions to DWH
+    #     inlet_n = str_model.split('_')[0].capitalize()
+    #     str_algo = str_model.split('_')[1].capitalize()
+    #     str_pred = 'Prediction'
+    #     ts_name = '_'.join([inlet_n, str_pred, str_algo])
+    #
+    #     write_DWH(str_path=os.path.join(r'\\srvedm11', 'Import', 'Messdaten', 'EPAG_Energie', 'DWH_EX_60'),
+    #               str_tsname=ts_name,
+    #               str_property='Python',
+    #               str_unit='m/3',
+    #               df_timeseries=df_ypred_1h
+    #               )
+    #
+    #     # D+1 Prediction to DWH
+
+    return ts_ypred
+
+
+
+
+
+
+
+
 

@@ -8,7 +8,8 @@ Created on Fri May 17 16:12:50 2024
 from models.utility import load_input, get_dates_from_config, handle_outliers, get_params_from_config
 from models.master_prediction import prepare_inputs, prepare_inputs_lstm, \
     train_lstm, predict_lstm, predict_lstm_daywise, train_svr, forecast_svr, \
-    prepare_inputs_svr
+    prepare_inputs_svr, transform_dayofyear, scale_with_minmax, train_ensemble, \
+    predict_ensemble
 
 
 import configparser
@@ -22,7 +23,7 @@ from datetime import datetime, timedelta
 ## Variable Assignment
 str_model = 'Inlet1'
 
-date_from = datetime.strptime('01.07.2024', '%d.%m.%Y')
+date_from = datetime.strptime('10.07.2024', '%d.%m.%Y')
 date_to = datetime.now() + timedelta(days=8)
 env_vars = db.get_env_variables(mandant='EPAG_ENERGIE')
 n_timestep = 6
@@ -62,11 +63,15 @@ inputs_svr = prepare_inputs_svr(str_model='inlet1_svr', idx_train=False)
 svr_models = train_svr(str_model='inlet1_svr')
 pred_svr = forecast_svr(str_model='inlet1_svr')
 
-with open("models//attributes//inlet1_svr_min_col.pkl", "rb") as file:
-    min_col = pickle.load(file)
-    
-with open("models//attributes//inlet1_svr_min_col.pkl", "rb") as file:
-    scale_factor = pickle.load(file)
+str_i = 'inlet1_lstm'
+
+inlet_n = str_i.split('_')[0].capitalize()
+str_model = str_i.split('_')[1].upper()
+str_pred = 'Prediction'
+str_list = [inlet_n, str_pred, str_model]
+
+str_ts = '_'.join(str_list)
+
 
 
 
