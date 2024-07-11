@@ -9,7 +9,7 @@ from models.utility import load_input, get_dates_from_config, handle_outliers, g
 from models.master_prediction import prepare_inputs, prepare_inputs_lstm, \
     train_lstm, predict_lstm, predict_lstm_daywise, train_svr, forecast_svr, \
     prepare_inputs_svr, transform_dayofyear, scale_with_minmax, train_ensemble, \
-    predict_ensemble
+    predict_ensemble, train_ensemble, predict_ensemble
 
 
 import configparser
@@ -45,15 +45,18 @@ data = load_input(str_model='inlet1_lstm', date_from=date_from, date_to=date_to)
 
 outliers = handle_outliers(data)
 
+
+# LSTM tryout #################################################################
+
 dates = get_dates_from_config(str_model='inlet1_lstm', training=False)
 get_params_from_config(function='get_label', str_model='inlet1_lstm')
 
-inputs = prepare_inputs(str_model='inlet1_svr', idx_train=False)
-inputs_lstm = prepare_inputs_lstm(str_model='inlet1_lstm', idx_train=False)
-train_lstm(str_model='inlet1_lstm')
-pred_lstm = predict_lstm(str_model='inlet1_lstm')
+inlet1_inputs = prepare_inputs(str_model='inlet1_svr', idx_train=False)
+inlet1_inputs_lstm = prepare_inputs_lstm(str_model='inlet1_lstm', idx_train=False)
+inlet1_trained = train_lstm(str_model='inlet1_lstm')
+inlet1_pred_lstm = predict_lstm(str_model='inlet1_lstm', writeDWH=False)
 
-pred_lstm_daywise = predict_lstm_daywise(str_model='inlet1_lstm', idx_train=False)
+inlet1_pred_lstm_daywise = predict_lstm_daywise(str_model='inlet1_lstm', idx_train=False)
 
 
 
@@ -61,18 +64,13 @@ pred_lstm_daywise = predict_lstm_daywise(str_model='inlet1_lstm', idx_train=Fals
 
 inputs_svr = prepare_inputs_svr(str_model='inlet1_svr', idx_train=False)
 svr_models = train_svr(str_model='inlet1_svr')
-pred_svr = forecast_svr(str_model='inlet1_svr')
-
-str_i = 'inlet1_lstm'
-
-inlet_n = str_i.split('_')[0].capitalize()
-str_model = str_i.split('_')[1].upper()
-str_pred = 'Prediction'
-str_list = [inlet_n, str_pred, str_model]
-
-str_ts = '_'.join(str_list)
+pred_svr = forecast_svr(str_model='inlet1_svr', writeDWH=False)
 
 
+# Ensemble tryout #############################################################
+
+trained_rfr = train_ensemble(str_model='inlet1_ensemble', idx_train=True)
+pred_ensemble = predict_ensemble(str_model='inlet1_ensemble', idx_train=False)
 
 
 

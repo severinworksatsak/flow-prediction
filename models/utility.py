@@ -52,6 +52,8 @@ def get_dates_from_config(str_model: str, training:bool=True):
     date_dict = {'date_from': date_from,
                  'date_to': date_to_clean}
 
+    #print(f"date_dict from get_dates_from_config: {date_dict}")
+
     return date_dict
 
 

@@ -4,13 +4,14 @@ from models.utility import load_input, scale_with_minmax, get_dates_from_config,
 from models.lstm import simpleLSTM
 from models.deeplearner import DeepLearner
 from models.svr import SVReg
-from sklearn.ensemble import RandomForestRegressor
 
+from sklearn.ensemble import RandomForestRegressor
 from keras.models import save_model, load_model
 import pickle
 import pandas as pd
 from datetime import datetime, timedelta
 import os
+from pytz import timezone
 
 
 def prepare_inputs(str_model:str, idx_train:bool, date_dict:dict=None):
@@ -377,7 +378,15 @@ def predict_lstm(str_model:str, idx_train:bool=False, date_dict:dict=None, write
                   )
 
         # D+1 Prediction to DWH
-        #TODO: D+1 prediction calculation
+        d_next = (timezone('CET').localize(datetime.now()) + timedelta(days=1)) \
+            .replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone('Etc/GMT-1'))
+
+        write_DWH(str_path=os.path.join(r'\\srvedm11', 'Import', 'Messdaten', 'EPAG_Energie', 'DWH_EX_60'),
+                  str_tsname=ts_name,
+                  str_property='Python_d+1',
+                  str_unit='m3/s',
+                  df_timeseries=df_ypred_1h.loc[df_ypred_1h.index >= d_next]
+                  )
 
     return ts_ypred
 
@@ -466,7 +475,14 @@ def predict_lstm_daywise(str_model:str, idx_train:bool=False, writeDWH:bool=Fals
                   )
 
         # D+1 Prediction to DWH
-        #TODO: D+1 prediction calculation
+        d_next = (timezone('CET').localize(datetime.now()) + timedelta(days=1)) \
+            .replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone('Etc/GMT-1'))
+        write_DWH(str_path=os.path.join(r'\\srvedm11', 'Import', 'Messdaten', 'EPAG_Energie', 'DWH_EX_60'),
+                  str_tsname=ts_name,
+                  str_property='Python_d+1',
+                  str_unit='m3/s',
+                  df_timeseries=df_ypred_1h.loc[df_ypred_1h.index >= d_next]
+                  )
 
         return ypred_series
 
@@ -516,6 +532,17 @@ def forecast_svr(str_model:str, idx_train:bool=False, writeDWH:bool=False): # di
                   str_property='Python',
                   str_unit='m/3',
                   df_timeseries=df_ypred_1h
+                  )
+
+        # Write d+1 predictions
+        d_next = (timezone('CET').localize(datetime.now()) + timedelta(days=1)) \
+            .replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone('Etc/GMT-1'))
+
+        write_DWH(str_path=os.path.join(r'\\srvedm11', 'Import', 'Messdaten', 'EPAG_Energie', 'DWH_EX_60'),
+                  str_tsname=ts_name,
+                  str_property='Python_d+1',
+                  str_unit='m3/s',
+                  df_timeseries=df_ypred_1h.loc[df_ypred_1h.index >= d_next]
                   )
 
     return y_pred_rescaled

@@ -130,6 +130,6 @@ class DeepLearner():
         # Extract best model
         metrics = pd.DataFrame({'mse': mse, 'val_loss': val_loss, 'lookback': lookback_window})
         best_model = param_grid[(metrics['mse'].rank() + metrics['val_loss'].rank()).idxmin()]
-        best_loss = metrics[(metrics['mse'].rank() + metrics['val_loss'].rank()).idxmin()]
+        # best_loss = metrics[(metrics['mse'].rank() + metrics['val_loss'].rank()).idxmin()]
 
-        return metrics, best_model, best_loss
+        return metrics, best_model

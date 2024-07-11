@@ -65,7 +65,7 @@ class SVReg():
 
         # Drop original label & remove trailing NAs
         df_save = df.drop(columns=[target_var])
-        df_save.dropna(inplace=True)
+        # df_save.dropna(inplace=True)
 
         return df_save, name_list
 
