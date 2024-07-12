@@ -59,20 +59,31 @@ inlet1_pred_lstm = predict_lstm(str_model='inlet1_lstm', writeDWH=False)
 inlet1_pred_lstm_daywise = predict_lstm_daywise(str_model='inlet1_lstm', idx_train=False)
 
 
+str_lstm2 = 'inlet2_lstm'
+
+inlet2_trainedlstm = train_lstm(str_model=str_lstm2, idx_train=True)
+inlet2_pred_lstm = predict_lstm(str_model=str_lstm2, writeDWH=False)
+
+
 
 # SVR tryout ##################################################################
 
-inputs_svr = prepare_inputs_svr(str_model='inlet1_svr', idx_train=False)
-svr_models = train_svr(str_model='inlet1_svr')
-pred_svr = forecast_svr(str_model='inlet1_svr', writeDWH=False)
+inlet1_inputs_svr = prepare_inputs_svr(str_model='inlet1_svr', idx_train=False)
+inlet1_svr_models = train_svr(str_model='inlet1_svr')
+inlet1_pred_svr = forecast_svr(str_model='inlet1_svr', writeDWH=False)
 
+str_svr2 = 'inlet2_svr'
+
+inlet2_svr_trained = train_svr(str_model=str_svr2)
+inlet2_pred_svr = forecast_svr(str_model=str_svr2, writeDWH=True)
 
 # Ensemble tryout #############################################################
 
 trained_rfr = train_ensemble(str_model='inlet1_ensemble', idx_train=True)
-pred_ensemble = predict_ensemble(str_model='inlet1_ensemble', idx_train=False)
+inlet1_pred_ensemble = predict_ensemble(str_model='inlet1_ensemble', idx_train=False)
 
-
+trained_rfr2 = train_ensemble(str_model='inlet2_ensemble', idx_train=True)
+inlet2_pred_ensemble = predict_ensemble(str_model='inlet2_ensemble', idx_train=False)
 
 
 

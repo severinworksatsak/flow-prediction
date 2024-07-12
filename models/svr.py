@@ -29,7 +29,10 @@ class SVReg():
         :param model_str: Name of model for which parameter n_timestep should be loaded from config.
         :param n_offset: Number of timesteps between training and first prediction.
         :param n_timestep: Number of intra-day timesteps within a day.
-
+        :param idx_train: (bool) Boolean indicator for training / prediction mode. Default is True. This
+                          variable serves to lag the target variable such that at time point t, n_timestep target
+                          variables are created, representing the future value of the target at t+1, ... , t+n_timestep.
+                          If false, the label needs not be lagged as it will be omitted from the data alltogether.
         Returns:
         :return df: Dataframe with target variables for n_timestep models.
         :return name_list: List with all label names.
@@ -61,11 +64,11 @@ class SVReg():
             if idx_train:
                 # Lag target variable & remove starting NAs
                 df[y_name] = df[target_var].shift(lag)
-                df[y_name] = df[y_name].bfill()
+                df[y_name] = df[y_name].ffill(limit=n_timestep)
 
         # Drop original label & remove trailing NAs
         df_save = df.drop(columns=[target_var])
-        # df_save.dropna(inplace=True)
+        df_save.dropna(inplace=True)
 
         return df_save, name_list
 

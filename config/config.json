@@ -1,6 +1,6 @@
 {
   "model": {
-    "inlet1": {
+    "inlet1_rnn": {
       "inputs": {
         "base_1d": {
           "ts_id": 11055778,
@@ -408,6 +408,7 @@
           "last_day_calc": 7
         },
         "architecture": {
+          "n_timestep": 6,
           "hyperparameters": {
             "max_depth": 16,
             "min_samples_leaf": 8,
@@ -415,6 +416,109 @@
             "n_estimators": 100
           }
         }
+      }
+    },
+    "inlet2_rnn":{
+      "inputs": {
+        "include_doy": true,
+        "base": {
+          "ts_id": 11127590,
+          "lags": [
+            0
+          ],
+          "freq": "1h",
+          "time_shift": "date_from",
+          "is_label": true
+        },
+        "base_1d": {
+          "ts_id": 11055782,
+          "lags": [
+            1
+          ],
+          "freq": "1d",
+          "time_shift": "date_from",
+          "str_table": "meanvalues",
+          "is_labelmean": true
+        },
+        "useday_1d": {
+          "ts_id": 11055636,
+          "lags": [
+            0
+          ],
+          "freq": "1d",
+          "time_shift": "date_to",
+          "str_table": "meanvalues"
+        },
+        "temp_1h": {
+          "ts_id": 10253447,
+          "lags": [
+            1
+          ],
+          "freq": "1h",
+          "time_shift": "date_to"
+        },
+        "glob_1h": {
+          "ts_id": 10255110,
+          "lags": [
+            1,
+            2,
+            3
+          ],
+          "freq": "1h",
+          "time_shift": "date_to"
+        },
+        "rain_1h": {
+          "ts_id": 10253455,
+          "lags": [
+            1,
+            2,
+            3
+          ],
+          "freq": "1h",
+          "time_shift": "date_to"
+        },
+        "bf15_1h": {
+          "ts_id": 11010900,
+          "lags": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "freq": "1h",
+          "time_shift": "date_to"
+        },
+        "schmelz_1h": {
+          "ts_id": 11010892,
+          "lags": [
+            1,
+            2,
+            3
+          ],
+          "freq": "1h",
+          "time_shift": "date_to"
+        }
+      },
+      "parameters": {
+        "training": {
+          "weekday_train": 6,
+          "active_calc": 1,
+          "train_start": "01.03.2021",
+          "last_day_train": -3,
+          "first_day_calc": -1,
+          "last_day_calc": 7
+        },
+        "architecture": {
+          "n_valid": 50,
+          "n_patience": 150,
+          "n_epochs": 1000,
+          "n_batch_size": 32,
+          "n_timestep": 6,
+          "n_hidden_neurons": 200
+        }
+      },
+      "outputs": {
+        "ts_id": 11055610
       }
     },
     "inlet2_lstm": {
@@ -643,7 +747,7 @@
       "inputs": {
         "include_doy": false,
         "base": {
-          "ts_id": 11127586,
+          "ts_id": 11127590,
           "lags": [
             0
           ],
@@ -652,7 +756,7 @@
           "is_label": true
         },
         "lstm": {
-          "ts_id": 13597910,
+          "ts_id": 13597940,
           "lags": [
             0
           ],
@@ -660,7 +764,7 @@
           "time_shift": "date_from"
         },
         "svr": {
-          "ts_id": 13597919,
+          "ts_id": 13597942,
           "lags": [
             0
           ],
@@ -668,7 +772,7 @@
           "time_shift": "date_from"
         },
         "rnn": {
-          "ts_id": 11055610,
+          "ts_id": 11055614,
           "lags": [
             0
           ],
@@ -684,7 +788,7 @@
           "time_shift": "date_from"
         },
         "useday_1d": {
-          "ts_id": 11055632,
+          "ts_id": 11055636,
           "lags": [
             0
           ],
@@ -703,6 +807,513 @@
           "last_day_calc": 7
         },
         "architecture": {
+          "n_timestep": 6,
+          "hyperparameters": {
+            "max_depth": 16,
+            "min_samples_leaf": 8,
+            "min_samples_split": 4,
+            "n_estimators": 100
+          }
+        }
+      }
+    },
+    "inlet3_rnn":{
+      "inputs": {
+        "include_doy": true,
+        "base": {
+          "ts_id": 11135706,
+          "lags": [
+            0
+          ],
+          "freq": "1h",
+          "time_shift": "date_from",
+          "is_label": true
+        },
+        "base_1d": {
+          "ts_id": 11135710,
+          "lags": [
+            1
+          ],
+          "freq": "1d",
+          "time_shift": "date_from",
+          "str_table": "meanvalues",
+          "is_labelmean": true
+        },
+        "useday_1d": {
+          "ts_id": 11135718,
+          "lags": [
+            0
+          ],
+          "freq": "1d",
+          "time_shift": "date_to",
+          "str_table": "meanvalues"
+        },
+        "temp_1h": {
+          "ts_id": 10253503,
+          "lags": [
+            1
+          ],
+          "freq": "1h",
+          "time_shift": "date_to"
+        },
+        "glob_1h": {
+          "ts_id": 10255350,
+          "lags": [
+            1,
+            2,
+            3
+          ],
+          "freq": "1h",
+          "time_shift": "date_to"
+        },
+        "rain_1h": {
+          "ts_id": 10253511,
+          "lags": [
+            1,
+            2,
+            3
+          ],
+          "freq": "1h",
+          "time_shift": "date_to"
+        },
+        "bf15_1h": {
+          "ts_id": 11010927,
+          "lags": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "freq": "1h",
+          "time_shift": "date_to"
+        },
+        "schmelz_1h": {
+          "ts_id": 11010952,
+          "lags": [
+            1,
+            2,
+            3
+          ],
+          "freq": "1h",
+          "time_shift": "date_to"
+        }
+      },
+      "parameters": {
+        "training": {
+          "weekday_train": 6,
+          "active_calc": 1,
+          "train_start": "01.08.2021",
+          "last_day_train": -3,
+          "first_day_calc": -1,
+          "last_day_calc": 7
+        },
+        "architecture": {
+          "n_valid": 50,
+          "n_patience": 150,
+          "n_epochs": 1000,
+          "n_batch_size": 32,
+          "n_timestep": 6,
+          "n_hidden_neurons": 200
+        }
+      }
+    },
+    "inlet3_lstm": {
+      "inputs": {
+        "include_doy": true,
+        "base": {
+          "ts_id": 11135706,
+          "lags": [
+            0
+          ],
+          "freq": "1h",
+          "time_shift": "date_from",
+          "is_label": true
+        },
+        "base_1d": {
+          "ts_id": 11135710,
+          "lags": [
+            0
+          ],
+          "freq": "1d",
+          "time_shift": "date_from",
+          "str_table": "meanvalues",
+          "is_labelmean": true
+        },
+        "useday_1d": {
+          "ts_id": 11135718,
+          "lags": [
+            0
+          ],
+          "freq": "1d",
+          "time_shift": "date_to",
+          "str_table": "meanvalues"
+        },
+        "temp_1h": {
+          "ts_id": 10253503,
+          "lags": [
+            0,
+            1
+          ],
+          "freq": "1h",
+          "time_shift": "date_from"
+        },
+        "glob_1h": {
+          "ts_id": 10255350,
+          "lags": [
+            1,
+            2,
+            3
+          ],
+          "freq": "1h",
+          "time_shift": "date_from"
+        },
+        "rain_1h": {
+          "ts_id": 10253511,
+          "lags": [
+            0,
+            1
+          ],
+          "freq": "1h",
+          "time_shift": "date_from"
+        },
+        "bf15_1h": {
+          "ts_id": 11010927,
+          "lags": [
+            0
+          ],
+          "freq": "1h",
+          "time_shift": "date_from"
+        },
+        "schmelz_1h": {
+          "ts_id": 11010952,
+          "lags": [
+            0,
+            1
+          ],
+          "freq": "1h",
+          "time_shift": "date_from"
+        }
+      },
+      "parameters": {
+        "training": {
+          "weekday_train": 6,
+          "active_calc": 1,
+          "train_start": "01.08.2021",
+          "last_day_train": -3,
+          "first_day_calc": 0,
+          "last_day_calc": 7
+        },
+        "architecture": {
+          "n_valid": 50,
+          "n_patience": 5,
+          "n_epochs": 1000,
+          "n_batch_size": 32,
+          "n_timestep": 6,
+          "n_lookback": 20,
+          "n_ahead": 6,
+          "n_offset": 0,
+          "hyperparameters": {
+            "units_l1": 200,
+            "dropout_l1": 0.2,
+            "activation_l1": "tanh",
+            "units_l2": 100,
+            "dropout_l2": 0.1,
+            "activation_l2": "tanh"
+          }
+        }
+      }
+    },
+    "inlet3_lstm_test": {
+      "inputs": {
+        "include_doy": true,
+        "base": {
+          "ts_id": 11135706,
+          "lags": [
+            0
+          ],
+          "freq": "1h",
+          "time_shift": "date_from",
+          "is_label": true
+        },
+        "base_1d": {
+          "ts_id": 11135710,
+          "lags": [
+            0
+          ],
+          "freq": "1d",
+          "time_shift": "date_from",
+          "str_table": "meanvalues",
+          "is_labelmean": true
+        },
+        "useday_1d": {
+          "ts_id": 11135718,
+          "lags": [
+            0
+          ],
+          "freq": "1d",
+          "time_shift": "date_to",
+          "str_table": "meanvalues"
+        },
+        "temp_1h": {
+          "ts_id": 10253503,
+          "lags": [
+            0, 1, 2, 3
+          ],
+          "freq": "1h",
+          "time_shift": "date_from"
+        },
+        "glob_1h": {
+          "ts_id": 10255350,
+          "lags": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "freq": "1h",
+          "time_shift": "date_from"
+        },
+        "rain_1h": {
+          "ts_id": 10253511,
+          "lags": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "freq": "1h",
+          "time_shift": "date_from"
+        },
+        "bf15_1h": {
+          "ts_id": 11010927,
+          "lags": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "freq": "1h",
+          "time_shift": "date_from"
+        },
+        "schmelz_1h": {
+          "ts_id": 11010952,
+          "lags": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "freq": "1h",
+          "time_shift": "date_from"
+        }
+      },
+      "parameters": {
+        "training": {
+          "weekday_train": 6,
+          "active_calc": 1,
+          "train_start": "01.08.2021",
+          "last_day_train": -3,
+          "first_day_calc": 0,
+          "last_day_calc": 7
+        },
+        "architecture": {
+          "n_valid": 50,
+          "n_patience": 5,
+          "n_epochs": 1000,
+          "n_batch_size": 32,
+          "n_timestep": 6,
+          "n_lookback": 20,
+          "n_ahead": 6,
+          "n_offset": 0,
+          "hyperparameters": {
+            "units_l1": 200,
+            "dropout_l1": 0.2,
+            "activation_l1": "tanh",
+            "units_l2": 100,
+            "dropout_l2": 0.1,
+            "activation_l2": "tanh"
+          }
+        }
+      }
+    },
+    "inlet3_svr": {
+      "inputs": {
+        "include_doy": true,
+        "base": {
+          "ts_id": 11135706,
+          "lags": [
+            0
+          ],
+          "freq": "1h",
+          "time_shift": "date_from",
+          "is_label": true
+        },
+        "base_1d": {
+          "ts_id": 11135710,
+          "lags": [
+            0
+          ],
+          "freq": "1d",
+          "time_shift": "date_from",
+          "str_table": "meanvalues",
+          "is_labelmean": true
+        },
+        "useday_1d": {
+          "ts_id": 11135718,
+          "lags": [
+            0
+          ],
+          "freq": "1d",
+          "time_shift": "date_to",
+          "str_table": "meanvalues"
+        },
+        "temp_1h": {
+          "ts_id": 10253503,
+          "lags": [
+            1
+          ],
+          "freq": "1h",
+          "time_shift": "date_from"
+        },
+        "glob_1h": {
+          "ts_id": 10255350,
+          "lags": [
+            1,
+            2
+          ],
+          "freq": "1h",
+          "time_shift": "date_from"
+        },
+        "rain_1h": {
+          "ts_id": 10253511,
+          "lags": [
+            1,
+            2
+          ],
+          "freq": "1h",
+          "time_shift": "date_from"
+        },
+        "bf15_1h": {
+          "ts_id": 11010927,
+          "lags": [
+            0,
+            1,
+            2
+          ],
+          "freq": "1h",
+          "time_shift": "date_from"
+        },
+        "schmelz_1h": {
+          "ts_id": 11010952,
+          "lags": [
+            1,
+            2,
+            3
+          ],
+          "freq": "1h",
+          "time_shift": "date_from"
+        }
+      },
+      "parameters": {
+        "training": {
+          "weekday_train": 6,
+          "active_calc": 1,
+          "train_start": "01.08.2021",
+          "last_day_train": -3,
+          "first_day_calc": 0,
+          "last_day_calc": 7
+        },
+        "architecture": {
+          "n_timestep": 6,
+          "n_offset": 0,
+          "hyperparameters": {
+            "config1": {
+              "valid_for": [
+                "y_model1",
+                "y_model2",
+                "y_model3",
+                "y_model4",
+                "y_model5",
+                "y_model6"
+              ],
+              "hyperparams": {
+                "C": 10,
+                "kernel": "poly",
+                "epsilon": 0.1
+              }
+            }
+          }
+        },
+        "outputs": {
+          "ts_id": 13597919
+        }
+      }
+    },
+    "inlet3_ensemble": {
+      "inputs": {
+        "include_doy": false,
+        "base": {
+          "ts_id": 11135706,
+          "lags": [
+            0
+          ],
+          "freq": "1h",
+          "time_shift": "date_from",
+          "is_label": true
+        },
+        "lstm": {
+          "ts_id": 13605626,
+          "lags": [
+            0
+          ],
+          "freq": "1h",
+          "time_shift": "date_from"
+        },
+        "svr": {
+          "ts_id": 13605629,
+          "lags": [
+            0
+          ],
+          "freq": "1h",
+          "time_shift": "date_from"
+        },
+        "rnn": {
+          "ts_id": 11135714,
+          "lags": [
+            0
+          ],
+          "freq": "1h",
+          "time_shift": "date_from"
+        },
+        "bf15_1h": {
+          "ts_id": 11010927,
+          "lags": [
+            0
+          ],
+          "freq": "1h",
+          "time_shift": "date_from"
+        },
+        "useday_1d": {
+          "ts_id": 11135718,
+          "lags": [
+            0
+          ],
+          "freq": "1d",
+          "time_shift": "date_to",
+          "str_table": "meanvalues"
+        }
+      },
+      "parameters": {
+        "training": {
+          "weekday_train": 6,
+          "active_calc": 1,
+          "train_start": "01.08.2021",
+          "last_day_train": -3,
+          "first_day_calc": 0,
+          "last_day_calc": 7
+        },
+        "architecture": {
+          "n_timestep": 6,
           "hyperparameters": {
             "max_depth": 16,
             "min_samples_leaf": 8,

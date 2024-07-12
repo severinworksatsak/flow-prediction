@@ -487,13 +487,13 @@ def predict_lstm_daywise(str_model:str, idx_train:bool=False, writeDWH:bool=Fals
         return ypred_series
 
 
-def forecast_svr(str_model:str, idx_train:bool=False, writeDWH:bool=False): # different naming due to svr.predict_svr
+def forecast_svr(str_model:str, idx_train:bool=False, date_dict:dict=None, writeDWH:bool=False): # different naming due to svr.predict_svr
 
     # Get Config Parameters
     label_name = get_params_from_config(function='get_label', str_model=str_model)['label']
 
     # Get SVR inputs
-    x_pred, model_names = prepare_inputs_svr(str_model=str_model, idx_train=idx_train)
+    x_pred, model_names = prepare_inputs_svr(str_model=str_model, idx_train=idx_train, date_dict=date_dict)
 
     # Load models & feature order
     with open(f'models//attributes//{str_model}_trained_dict.pkl', 'rb') as file:
@@ -595,6 +595,46 @@ def predict_ensemble(str_model:str, idx_train=False, date_dict:dict=None, writeD
     #     # D+1 Prediction to DWH
 
     return ts_ypred
+
+
+def predict_zufluss(str_inlet:str):
+
+    # Create str_models
+    str_lstm = str_inlet + '_lstm'
+    str_svr = str_inlet + '_svr'
+    str_ensemble = str_inlet + '_ensemble'
+
+    # Get config parameters
+    dates = get_dates_from_config(str_model=str_ensemble, training=False)
+    date_from = dates['date_from']
+    date_to = dates['date_to']
+    n_timestep = get_params_from_config(function='get_n_timestep', str_model=str_ensemble)['n_timestep']
+
+    # Create strawmen
+    date_index = pd.date_range(start=date_from, end=date_to, freq=f'{24 // n_timestep}h', tz=timezone('Etc/GMT-1'))
+    y_pred = pd.Series(index=date_index)
+    pred_days = (y_pred[::n_timestep].index).tz_localize(None) # Necessary due to load_input not taking tz-aware inputs
+    date_dict = None
+
+    # Loop through each day -> enumerate
+    for day_num, pred_day in pred_days[:-1]:
+
+        # Define truncated date subsets
+        date_from_sub = pred_day
+        date_to_sub = date_from_sub + timedelta(days=1)
+
+        # Predict LSTM
+        y_pred_lstm = predict_lstm(str_model=str_lstm, idx_train=False, date_dict=date_dict, writeDWH=False)
+
+        # Predict SVR
+        y_pred_svr = forecast_svr(str_model=str_svr, idx_train=False)
+
+        # Load RNN
+
+        # Concatenate Predictions
+
+        # Predict Ensemble and add to
+
 
 
 
