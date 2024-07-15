@@ -614,7 +614,17 @@ def predict_ensemble(str_model:str, idx_train=False, date_dict:dict=None, writeD
     return ts_ypred
 
 
-def predict_zufluss(str_inlet:str):
+def predict_zufluss(str_inlet:str, writeDWH:bool=False):
+    """
+    Predict ensemble model by iteratively making a forecast for LSTM, SVR and RNN for each prediction day and passing
+    these outputs to the ensemble model as inputs. If desired, function directly exports predictions of LSTM, SVR and
+    daily prediction means to Belvis Data Warehouse.
+
+    :param str_inlet: (str)
+    :param writeDWH: (bool)
+
+    :return: (pd.Series) Ensemble model prediction time series over the time range specified in config.json.
+    """
 
     # Create str_models
     str_lstm = str_inlet + '_lstm'
@@ -641,15 +651,20 @@ def predict_zufluss(str_inlet:str):
     with open(f'models/attributes/{str_ensemble}_trained_model.pkl', 'rb') as file:
         ensemble_model = pickle.load(file)
 
-
     # Create strawmen
-    date_index = pd.date_range(start=date_from, end=date_to, freq=f'{24 // n_timestep}h', tz=timezone('Etc/GMT-1'))
+    date_index = pd.date_range(start=date_from, end=date_to, freq=f'{24 // n_timestep}h', tz=timezone('Etc/GMT-1'),
+                               inclusive='left') # inclusive='left'
+
     y_pred_all = pd.Series(index=date_index)
+    y_pred_all_lstm = pd.Series(index=date_index)
+    y_pred_all_svr = pd.Series(index=date_index)
+    dailymeans_all = pd.Series(index=date_index)
+
     pred_days = (y_pred_all[::n_timestep].index).tz_localize(None) # Necessary due to load_input not taking tz-aware inputs
     replace_data = None
 
-    # Loop through each day -> enumerate
-    for pred_day in pred_days[:-1]:
+    # Loop through each prediction day -> iterative prediction due to circular input of daily mean inflow
+    for pred_day in pred_days: # removed pred_days[:-1]
 
         # Define truncated date subsets
         date_from_sub = pred_day
@@ -661,6 +676,7 @@ def predict_zufluss(str_inlet:str):
         y_pred_lstm = predict_lstm(str_model=str_lstm, idx_train=False, date_dict=date_dict, writeDWH=False,
                                    replace_data=replace_data)
         y_pred_lstm = (y_pred_lstm - scale_mins[x_labels['lstm']]) / scale_factors[x_labels['lstm']]
+        print(f"Pred day {pred_day}: {y_pred_lstm}")
 
         # Predict SVR
         y_pred_svr = forecast_svr(str_model=str_svr, idx_train=False, date_dict=date_dict, writeDWH=False)
@@ -672,9 +688,8 @@ def predict_zufluss(str_inlet:str):
         at some point that the RNN training / prediction is integrated in this new FE infrastructure, the data source
         used below would need to be updated. 
         '''
-        # rnn_id = get_params_from_config(function='get_rnn_baseid', str_model=str_rnn)['rnn_id']
         y_pred_rnn = load_input(str_model=str_rnn, date_from=date_from_sub, date_to=date_to_sub)['base_lag0']
-        y_pred_rnn = (y_pred_svr - scale_mins[x_labels['rnn']]) / scale_factors[x_labels['rnn']]
+        y_pred_rnn = (y_pred_rnn - scale_mins[x_labels['rnn']]) / scale_factors[x_labels['rnn']]
 
         # Concatenate Predictions
         x_pred = pd.DataFrame(data={x_labels['lstm']: y_pred_lstm, x_labels['svr']: y_pred_svr,
@@ -692,21 +707,119 @@ def predict_zufluss(str_inlet:str):
         # Predict Ensemble & Calculate Day Mean
         x_pred_reorder = x_pred.reindex(columns=feature_order)
         y_pred = ensemble_model.predict(x_pred_reorder)
+        ts_ypred = pd.Series(y_pred, index=x_pred.index, name='ypred_ensemble')
 
         replace_name = get_params_from_config(function='get_labelmean', str_model='inlet1_lstm')['label_mean'] # base_1d lags should be identical across all models
-        replace_data = pd.Series(data=[y_pred.mean() for timeofday in y_pred.index],
-                                 index=y_pred.index,
+        replace_data = pd.Series(data=[ts_ypred.mean() for timeofday in ts_ypred.index],
+                                 index=ts_ypred.index,
                                  name=replace_name)
 
         # Add Prediction to Strawman
-        y_pred_all.update(y_pred)
+        y_pred_all.update(ts_ypred)
+        y_pred_all_lstm.update(y_pred_lstm)
+        y_pred_all_svr.update(y_pred_svr)
+        dailymeans_all.update(replace_data)
+
+    # Create Prediction Dictionary
+    pred_data = {
+        'lstm': y_pred_all_lstm,
+        'svr': y_pred_all_svr,
+        # 'ensemble': y_pred_all     -> Uncomment once Ensemble Belvis Time series is created
+    }
 
     # Rescale predictions
-    y_pred_rescaled = inverse_transform_minmax(df_scaled=y_pred_all, str_model=str_ensemble, attributes=[label_name])
+    y_pred_rescaled = inverse_transform_minmax(df_scaled=y_pred_all, str_model=str_ensemble, attributes=[label_name]) # Delete when y_pred_all included in dict
+    dailymeans_all = inverse_transform_minmax(df_scaled=dailymeans_all, str_model=str_ensemble, attributes=[label_name])
+
+    for model in pred_data.keys():
+        pred_data[model] = inverse_transform_minmax(df_scaled=pred_data[model],
+                                                    str_model=str_ensemble,
+                                                    attributes=[label_name]
+                                                    )
 
     # Write DWH
+    if writeDWH:
+        writeDWH_zufluss(str_inlet=str_inlet, pred_data=pred_data, daymean_data=None) # Change to dailymeans_all after go-live
 
-    return y_pred_rescaled
+    return y_pred_rescaled, pred_data, dailymeans_all # Remove pred_data, dailymeans_all after go-live, rewrite y_pred_rescaled to pred_data['ensemble']
+
+
+def writeDWH_zufluss(str_inlet:str, pred_data:dict, daymean_data:pd.Series=None):
+    """
+    Iteratively write predictions stemming from predict_zufluss or other functions to Belvis Data Warehouse, including
+    daily means of predicted model.
+
+    :param str_inlet: (str) Inlet name, is used for referencing in config.json and as identifier for Belvis import.
+    :param pred_data: (dict) Dictionary containing algorithm names and prediction data as key value pairs. For example,
+                      such a dict can be structured as follows: {'lstm', ypred_lstm, 'svr': ypred_svr,
+                      'ensemble': ypred_ensemble}. Since RNN is currently predicted differently than newer models, it
+                      does not need to be included in this dict.
+    :param daymean_data: (pd.Series) Pandas series containing daily means of predicted inflow. Default is None, in which
+                         case no mean data is written to DWH. This is due to the fact that the daily data time series is
+                         a productive series used elsewhere, which motivates parsimonious updating.
+
+    :return: CSV Export / Belvis Import for each predicted model specified in the pred_data dictionary plus, if
+             applicable, upload of daily means.
+    """
+
+    # Define global function variables
+    inlet_n = str_inlet.capitalize()
+
+    # Model Predictions ################################################################################################
+
+    for model in pred_data.keys():
+        # Prepare inputs
+        df_model_1h = pred_data[model].resample('1h').interpolate().to_frame()
+        str_algo = model.upper()
+        ts_name = '_'.join([inlet_n, 'Prediction', str_algo])
+
+        # Write LSTM Prediction
+        write_DWH(str_path=os.path.join(r'\\srvedm11', 'Import', 'Messdaten', 'EPAG_Energie', 'DWH_EX_60'),
+                  str_tsname=ts_name,
+                  str_property='Python',
+                  str_unit='m/3',
+                  df_timeseries=df_model_1h
+                  )
+
+        # Write LSTM d+1 Prediction
+        d_next = (timezone('CET').localize(datetime.now()) + timedelta(days=1)) \
+            .replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone('Etc/GMT-1'))
+
+        write_DWH(str_path=os.path.join(r'\\srvedm11', 'Import', 'Messdaten', 'EPAG_Energie', 'DWH_EX_60'),
+                  str_tsname=ts_name,
+                  str_property='Python_d+1',
+                  str_unit='m3/s',
+                  df_timeseries=df_model_1h.loc[df_model_1h.index >= d_next]
+                  )
+
+        # Day Means ####################################################################################################
+
+        if daymean_data is not None:
+            # Prepare inputs
+            df_mean_1h = daymean_data.resample('1h').interpolate().to_frame()
+            ts_name = '_'.join([str_inlet, 'Prediction', 'EPAG', 'day'])
+
+            # Write Day Means
+            write_DWH(str_path=os.path.join(r'\\srvedm11', 'Import', 'Messdaten', 'EPAG_Energie', 'DWH_EX_60'),
+                      str_tsname=ts_name,
+                      str_property='Python',
+                      str_unit='m/3',
+                      df_timeseries=df_mean_1h
+                      )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

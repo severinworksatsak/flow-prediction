@@ -105,9 +105,10 @@ class simpleLSTM():
     # Sequencing for LSTM
     def generate_sequences(self, df, target_var: str, n_lookback: int, n_ahead: int, n_offset: int = 0,
                            drop_target: bool = True, continuous: bool = True, n_timestep: int = 6,
-                           productive:bool=False, train_share: float = 0.7):
+                           productive:bool=False, train_share: float = 0.7, verbose:int=0):
         """
         Generate sequence arrays for LSTM and perform train-test-split.
+
         :param df: Dataframe containing x and y features with datetime index.
         :param target_var: (str) Column name of target variable y in df.
         :param n_lookback: (int) Sequence length of features x.
@@ -125,12 +126,15 @@ class simpleLSTM():
                            be returned as x_train and y_train, with empty x_test and y_test.
         :param train_share: (float) Train-test split threshold; train_share = % of dataset included
                             in train sample.
+        :param verbose: (int) Indicator whether to print data load progress. Prints if verbose > 0. Default is 0.
+
         :return: Variable sequence arrays x_train, x_test, y_train, y_test.
         """
         # Separate target variable
         df_y = df[target_var]
         df_x = df.drop(columns=[target_var]) if drop_target else df
-        print(f"Length df_x: {len(df_x)} - length df_y: {len(df_y)}")
+        if verbose >= 1:
+            print(f"Length df_x: {len(df_x)} - length df_y: {len(df_y)}")
 
         # Get timestamps
         df_timestamps = df.index.tz_convert('UTC').astype(np.int64) // 10**9

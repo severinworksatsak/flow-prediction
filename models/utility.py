@@ -166,7 +166,7 @@ def get_params_from_config(function: str, str_model: str):
 
 def load_input(str_model: str, date_from, date_to, n_timestep: int = None, use_day: bool = True,
                use_day_var: str = 'useday_1d_lag0', mandant_user: str = None, mandant_pwd: str = None,
-               mandant_addr: str = None, idx_train:bool=True):
+               mandant_addr: str = None, idx_train:bool=True, verbose:int=0):
     """
     Load feature matrix for machine learning models according to variable specification in config.json, including
     built-in time interval rescaling of timeseries.
@@ -186,6 +186,9 @@ def load_input(str_model: str, date_from, date_to, n_timestep: int = None, use_d
     :param mandant_user: (str)
     :param mandant_pwd: (str)
     :param mandant_addr: (str)
+    :param idx_train: (bool) Boolean indicator whether in training or prediction mode. Default is True. If False, label
+                      variable will be skipped as it is not required for the prediction in productive mode.
+    :param verbose: (int) Indicator whether to print data load progress. Prints if verbose > 0. Default is 0.
 
     Returns:
     :return: (pd.DataFrame) DataFrame containing feature matrix with Etc/GMT-1-timestamped index.
@@ -240,7 +243,8 @@ def load_input(str_model: str, date_from, date_to, n_timestep: int = None, use_d
         clean_variables.remove(var_name)
 
     for input_variable in clean_variables:
-        print(input_variable)
+        if verbose >= 1:
+            print(input_variable)
         # Extract input variable parameters
         ts_id_i = model_config['inputs'][input_variable]['ts_id']
         lags_i = model_config['inputs'][input_variable]['lags']
@@ -296,8 +300,6 @@ def load_input(str_model: str, date_from, date_to, n_timestep: int = None, use_d
                 raise ValueError("Frequency neither of '1d', '1h', or '15min'!")
 
         counter += 1
-
-        #TODO: Check whether date_from needs 1 lag
 
         # Lag variables
         for lag in lags_i:
@@ -356,15 +358,18 @@ def transform_dayofyear(df):
 
 
 # Outlier Detection
-def handle_outliers(df_outlier, contamination='auto', window_length: int = 6, alpha: float = None):
+def handle_outliers(df_outlier, contamination='auto', window_length: int = 6, alpha: float = None, verbose:int=0):
     """
     Detect outliers based on Local Outlier Factor replace these values with exponential
     weighted moving average of x previous values.
+
     :param df: Dataframe containing to-be-checked values. Algo will loop through all
                columns of df.
     :param contamination: Contamination mode for LocalOutlierFactor class. Default is 'auto'.
     :param window_length: EWM average window length for outlier imputation.
     :param alpha: Fading parameter for ewm computation. Defaults to 2/(x+1).
+    :param verbose: (int) Indicator whether to print data load progress. Prints if verbose > 0. Default is 0.
+
     :return: Dataframe with corrected outliers.
     """
     if alpha is None:
@@ -376,7 +381,8 @@ def handle_outliers(df_outlier, contamination='auto', window_length: int = 6, al
     df = df_outlier.copy()
 
     for variable in df.columns:
-        print(f'Variable {variable}')
+        if verbose >= 1:
+            print(f'Variable {variable}')
         outlier_preds = lof.fit_predict(df[variable].values.reshape(-1, 1))
         mask = outlier_preds == -1
         variable_mask = df[variable][mask]
