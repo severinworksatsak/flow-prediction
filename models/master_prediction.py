@@ -4,6 +4,7 @@ from models.utility import load_input, scale_with_minmax, get_dates_from_config,
 from models.lstm import simpleLSTM
 from models.deeplearner import DeepLearner
 from models.svr import SVReg
+from models.solutil_func import get_timeseries_1h
 
 from sklearn.ensemble import RandomForestRegressor
 from keras.models import save_model, load_model
@@ -76,8 +77,9 @@ def prepare_inputs_lstm(str_model:str, idx_train:bool, date_dict:dict=None, repl
                         newly saved. If false, the factors are merely reloaded from the existing pkl file.
     :param date_dict: (dict) Dictionary containing 'date_from' and 'date_to' variables either as string or
                       datetime object. Default is None, in which case the dates are retrieved from the config.
-    :param replace_data: (dict) Dictionary containing replacement subsets, with which existing data can be overridden,
-                         e.g. to iteratively insert 1d-mean values for multi-day predictions.
+    :param replace_data: (pd.Series / pd.DataFrame / dict) Iterable object containing replacement subsets, with which
+                         existing data can be overridden, e.g. to iteratively insert 1d-mean values for multi-day
+                         predictions.
 
     Returns:
     :return: (array) Sequence arrays x_train, x_test, y_train, y_test. If in productive version, x_test and y_test will
@@ -124,7 +126,7 @@ def prepare_inputs_lstm(str_model:str, idx_train:bool, date_dict:dict=None, repl
     return df_seq
 
 
-def prepare_inputs_svr(str_model:str, idx_train:bool, date_dict:dict=None):
+def prepare_inputs_svr(str_model:str, idx_train:bool, date_dict:dict=None, replace_data=None):
     """
     Prepare inputs for SVR models by retrieving features / labels, sanitizing and scaling, and splitting into
     train/test & feature/label frames. Important: As SVRs are single-output models, labels for n different models have
@@ -142,6 +144,9 @@ def prepare_inputs_svr(str_model:str, idx_train:bool, date_dict:dict=None):
                         newly saved. If false, the factors are merely reloaded from the existing pkl file.
     :param date_dict: (dict) Dictionary containing 'date_from' and 'date_to' variables either as string or
                       datetime object. Default is None, in which case the dates are retrieved from the config.
+    :param replace_data: (pd.Series / pd.DataFrame / dict) Iterable object containing replacement subsets, with which
+                         existing data can be overridden, e.g. to iteratively insert 1d-mean values for multi-day
+                         predictions.
 
     Returns:
     :return df_label: (df) Dataframe containing features and lagged labels, with lags ranging from 1 to n_timestep,
@@ -155,6 +160,9 @@ def prepare_inputs_svr(str_model:str, idx_train:bool, date_dict:dict=None):
 
     # Preparation up to Scaling
     df_scaled = prepare_inputs(str_model=str_model, idx_train=idx_train, date_dict=date_dict)
+
+    if replace_data is not None:
+        df_scaled.update(replace_data)
 
     # Build SVR Model Input
     svr = SVReg()
@@ -301,7 +309,7 @@ def train_ensemble(str_model:str, idx_train:bool, date_dict:dict=None):
 
 # Predict each model ---------------------------------------------------------------------------------------------------
 
-def predict_lstm(str_model:str, idx_train:bool=False, date_dict:dict=None, writeDWH:bool=False):
+def predict_lstm(str_model:str, idx_train:bool=False, date_dict:dict=None, writeDWH:bool=False, replace_data=None):
     """
     Make predictions with pre-trained LSTM model, whose weights have been restored from pkl file.
     Method combines input preparation, data sanitation, sequence generation of x_test, and prediction
@@ -319,6 +327,11 @@ def predict_lstm(str_model:str, idx_train:bool=False, date_dict:dict=None, write
                         newly saved. If false, the factors are merely reloaded from the existing pkl file.
     :param date_dict: (dict) Dictionary containing 'date_from' and 'date_to' variables either as string or
                       datetime object. Default is None, in which case the dates are retrieved from the config.
+    :param writeDWH: (bool) Boolean indicator for export to Data Warehouse. Defaults to False. If True, CSV file is
+                     generated and uploaded to Belvis import folder.
+    :param replace_data: (pd.Series / pd.DataFrame / dict) Iterable object containing replacement subsets, with which
+                         existing data can be overridden, e.g. to iteratively insert 1d-mean values for multi-day
+                         predictions.
 
     Returns:
     :return ts_ypred: (Series) Series of forecasted values.
@@ -344,7 +357,8 @@ def predict_lstm(str_model:str, idx_train:bool=False, date_dict:dict=None, write
     model = load_model(f'models//attributes//{str_model}_trained_model.keras')
 
     # Load prediction input
-    df_seq = prepare_inputs_lstm(str_model=str_model, idx_train=idx_train, date_dict=date_dict)
+    df_seq = prepare_inputs_lstm(str_model=str_model, idx_train=idx_train, date_dict=date_dict,
+                                 replace_data=replace_data)
     x_pred = df_seq[0]
     lstm.ytest_startdate = df_seq[4]
 
@@ -487,13 +501,15 @@ def predict_lstm_daywise(str_model:str, idx_train:bool=False, writeDWH:bool=Fals
         return ypred_series
 
 
-def forecast_svr(str_model:str, idx_train:bool=False, date_dict:dict=None, writeDWH:bool=False): # different naming due to svr.predict_svr
+def forecast_svr(str_model:str, idx_train:bool=False, date_dict:dict=None, writeDWH:bool=False,
+                 replace_data:dict=None): # different naming due to svr.predict_svr
 
     # Get Config Parameters
     label_name = get_params_from_config(function='get_label', str_model=str_model)['label']
 
     # Get SVR inputs
-    x_pred, model_names = prepare_inputs_svr(str_model=str_model, idx_train=idx_train, date_dict=date_dict)
+    x_pred, model_names = prepare_inputs_svr(str_model=str_model, idx_train=idx_train, date_dict=date_dict,
+                                             replace_data=replace_data)
 
     # Load models & feature order
     with open(f'models//attributes//{str_model}_trained_dict.pkl', 'rb') as file:
@@ -511,8 +527,9 @@ def forecast_svr(str_model:str, idx_train:bool=False, date_dict:dict=None, write
     svr = SVReg()
     y_pred = svr.predict_svr(trained_svr=trained_models, x_test=x_pred_reorder, str_model=str_model)
 
-    # Rescale Predictions
+    # Rescale Predictions -> with rescale = False, the input for ensemble prediction is generated
     y_pred_rescaled = inverse_transform_minmax(df_scaled=y_pred, str_model=str_model, attributes=[label_name])
+
     y_pred_rescaled.index = date_index
 
     # Write prediction to DWH
@@ -602,6 +619,7 @@ def predict_zufluss(str_inlet:str):
     # Create str_models
     str_lstm = str_inlet + '_lstm'
     str_svr = str_inlet + '_svr'
+    str_rnn = str_inlet + '_rnn'
     str_ensemble = str_inlet + '_ensemble'
 
     # Get config parameters
@@ -609,31 +627,86 @@ def predict_zufluss(str_inlet:str):
     date_from = dates['date_from']
     date_to = dates['date_to']
     n_timestep = get_params_from_config(function='get_n_timestep', str_model=str_ensemble)['n_timestep']
+    x_labels = get_params_from_config(function='get_ensemble_labels', str_model=str_ensemble)
+    exog_feat = get_params_from_config(function='get_exogenous_labels', str_model=str_ensemble)
+    label_name = get_params_from_config(function='get_label', str_model=str_ensemble)['label']
+
+    # Get pickle inputs
+    with open(f'models/attributes/{str_ensemble}_min_col.pkl', 'rb') as file:
+        scale_mins = pickle.load(file)
+    with open(f'models/attributes/{str_ensemble}_scale_factor.pkl', 'rb') as file:
+        scale_factors = pickle.load(file)
+    with open(f'models/attributes/{str_ensemble}_feature_order.pkl', 'rb') as file:
+        feature_order = pickle.load(file)
+    with open(f'models/attributes/{str_ensemble}_trained_model.pkl', 'rb') as file:
+        ensemble_model = pickle.load(file)
+
 
     # Create strawmen
     date_index = pd.date_range(start=date_from, end=date_to, freq=f'{24 // n_timestep}h', tz=timezone('Etc/GMT-1'))
-    y_pred = pd.Series(index=date_index)
-    pred_days = (y_pred[::n_timestep].index).tz_localize(None) # Necessary due to load_input not taking tz-aware inputs
-    date_dict = None
+    y_pred_all = pd.Series(index=date_index)
+    pred_days = (y_pred_all[::n_timestep].index).tz_localize(None) # Necessary due to load_input not taking tz-aware inputs
+    replace_data = None
 
     # Loop through each day -> enumerate
-    for day_num, pred_day in pred_days[:-1]:
+    for pred_day in pred_days[:-1]:
 
         # Define truncated date subsets
         date_from_sub = pred_day
         date_to_sub = date_from_sub + timedelta(days=1)
+        date_dict = {'date_from': date_from_sub,
+                     'date_to': date_to_sub}
 
         # Predict LSTM
-        y_pred_lstm = predict_lstm(str_model=str_lstm, idx_train=False, date_dict=date_dict, writeDWH=False)
+        y_pred_lstm = predict_lstm(str_model=str_lstm, idx_train=False, date_dict=date_dict, writeDWH=False,
+                                   replace_data=replace_data)
+        y_pred_lstm = (y_pred_lstm - scale_mins[x_labels['lstm']]) / scale_factors[x_labels['lstm']]
 
         # Predict SVR
-        y_pred_svr = forecast_svr(str_model=str_svr, idx_train=False)
+        y_pred_svr = forecast_svr(str_model=str_svr, idx_train=False, date_dict=date_dict, writeDWH=False)
+        y_pred_svr = (y_pred_svr - scale_mins[x_labels['svr']]) / scale_factors[x_labels['svr']]
 
         # Load RNN
+        '''
+        Load from Belvis is only required as long as RNN is predicted using legacy infrastructure. Should it be decided
+        at some point that the RNN training / prediction is integrated in this new FE infrastructure, the data source
+        used below would need to be updated. 
+        '''
+        # rnn_id = get_params_from_config(function='get_rnn_baseid', str_model=str_rnn)['rnn_id']
+        y_pred_rnn = load_input(str_model=str_rnn, date_from=date_from_sub, date_to=date_to_sub)['base_lag0']
+        y_pred_rnn = (y_pred_svr - scale_mins[x_labels['rnn']]) / scale_factors[x_labels['rnn']]
 
         # Concatenate Predictions
+        x_pred = pd.DataFrame(data={x_labels['lstm']: y_pred_lstm, x_labels['svr']: y_pred_svr,
+                                    x_labels['rnn']: y_pred_rnn})
+        x_pred.dropna(inplace=True)
 
-        # Predict Ensemble and add to
+        # Load & Scale Exogenous Features
+        df_exog = prepare_inputs(str_model=str_ensemble,
+                                 idx_train=False,
+                                 date_dict=date_dict
+                                 )[exog_feat['exog_labels']]
+        df_exog_scaled = ((df_exog - scale_mins) / scale_factors).dropna(axis=1, how='all')
+        x_pred[exog_feat['exog_labels']] = df_exog_scaled
+
+        # Predict Ensemble & Calculate Day Mean
+        x_pred_reorder = x_pred.reindex(columns=feature_order)
+        y_pred = ensemble_model.predict(x_pred_reorder)
+
+        replace_name = get_params_from_config(function='get_labelmean', str_model='inlet1_lstm')['label_mean'] # base_1d lags should be identical across all models
+        replace_data = pd.Series(data=[y_pred.mean() for timeofday in y_pred.index],
+                                 index=y_pred.index,
+                                 name=replace_name)
+
+        # Add Prediction to Strawman
+        y_pred_all.update(y_pred)
+
+    # Rescale predictions
+    y_pred_rescaled = inverse_transform_minmax(df_scaled=y_pred_all, str_model=str_ensemble, attributes=[label_name])
+
+    # Write DWH
+
+    return y_pred_rescaled
 
 
 

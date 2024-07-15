@@ -128,11 +128,35 @@ def get_params_from_config(function: str, str_model: str):
             param_dict['label_mean'] = label_name
             param_dict['meanvar_name'] = var_name
 
+        case 'get_ensemble_labels':
+            iter_dict = model_config['inputs']
+
+            for var_key, var_value in iter_dict.items():
+                if var_key != 'include_doy':
+                    lag = iter_dict[var_key]['lags'][0]
+                    label_name = f'{var_key}_lag{lag}'
+                    param_dict[var_key] = label_name
+
+        case 'get_exogenous_labels':
+            iter_dict = model_config['inputs']
+            label_list = []
+
+            for var_key, var_value in iter_dict.items():
+                if isinstance(var_value, dict) and var_value.get('is_exogenous'):
+                    for i_lag in var_value['lags']:
+                        label_name = f'{var_key}_lag{i_lag}'
+                        label_list.append(label_name)
+
+            param_dict['exog_labels'] = label_list
+
         case 'get_doyflag':
             param_dict['doy_flag'] = model_config['inputs']['include_doy']
 
         case 'build_ensemble':
             param_dict['hyperparameters'] = model_config['parameters']['architecture']['hyperparameters']
+
+        case 'get_rnn_baseid':
+            param_dict['rnn_id'] = model_config['inputs']['base']['ts_id']
 
         case _:
             raise ValueError('Provided function name is not available.')

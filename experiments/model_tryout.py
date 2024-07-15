@@ -16,6 +16,7 @@ import configparser
 from datetime import datetime, timedelta
 import pandas as pd
 import pickle
+from pytz import timezone
 
 import solutil.dbqueries as db
 from datetime import datetime, timedelta
@@ -23,8 +24,8 @@ from datetime import datetime, timedelta
 ## Variable Assignment
 str_model = 'Inlet1'
 
-date_from = datetime.strptime('10.07.2024', '%d.%m.%Y')
-date_to = datetime.now() + timedelta(days=8)
+date_from = datetime.strptime('13.07.2024', '%d.%m.%Y').replace(hour=0, minute=0, second=0, microsecond=0)
+date_to = date_from + timedelta(days=1)
 env_vars = db.get_env_variables(mandant='EPAG_ENERGIE')
 n_timestep = 6
 
@@ -89,3 +90,20 @@ inlet2_pred_ensemble = predict_ensemble(str_model='inlet2_ensemble', idx_train=F
 
 
 
+
+
+
+
+
+
+
+
+date_index = pd.date_range(start=date_from, end=date_to, freq=f'{24 // n_timestep}h', tz=timezone('Etc/GMT-1'))
+y_pred = pd.Series(index=date_index)
+pred_days = (y_pred[::n_timestep].index).tz_localize(None)
+
+for count, day in enumerate(pred_days):
+    print(f"day: {day}, count: {count}")
+    
+    
+rnn_data = load_input(str_model='inlet2_rnn', date_from=date_from, date_to=date_to)['base_lag0']

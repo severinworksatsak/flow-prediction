@@ -2,6 +2,16 @@
   "model": {
     "inlet1_rnn": {
       "inputs": {
+        "base": {
+          "include_doy": true,
+          "ts_id": 11127586,
+          "lags": [
+            0
+          ],
+          "freq": "1h",
+          "time_shift": "date_from",
+          "is_label": true
+        },
         "base_1d": {
           "ts_id": 11055778,
           "lags": [
@@ -386,7 +396,8 @@
             0
           ],
           "freq": "1h",
-          "time_shift": "date_from"
+          "time_shift": "date_from",
+          "is_exogenous": true
         },
         "useday_1d": {
           "ts_id": 11055632,
@@ -785,7 +796,8 @@
             0
           ],
           "freq": "1h",
-          "time_shift": "date_from"
+          "time_shift": "date_from",
+          "is_exogenous": true
         },
         "useday_1d": {
           "ts_id": 11055636,
@@ -794,7 +806,8 @@
           ],
           "freq": "1d",
           "time_shift": "date_to",
-          "str_table": "meanvalues"
+          "str_table": "meanvalues",
+          "is_exogenous": true
         }
       },
       "parameters": {
@@ -1291,7 +1304,8 @@
             0
           ],
           "freq": "1h",
-          "time_shift": "date_from"
+          "time_shift": "date_from",
+          "is_exogenous": true
         },
         "useday_1d": {
           "ts_id": 11135718,
@@ -1300,7 +1314,8 @@
           ],
           "freq": "1d",
           "time_shift": "date_to",
-          "str_table": "meanvalues"
+          "str_table": "meanvalues",
+          "is_exogenous": true
         }
       },
       "parameters": {
