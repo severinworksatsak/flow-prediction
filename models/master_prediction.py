@@ -279,7 +279,24 @@ def train_svr(str_model:str, idx_train:bool=True):
 
 
 def train_ensemble(str_model:str, idx_train:bool, date_dict:dict=None):
+    """
+    Train random forest regressor as metamodel for individual predictions and save model parameters for reuse.
 
+    :param str_model: (str) Model name as specified under 'models' section in json config.
+    :param idx_train: (bool) Boolean indicator for training / prediction mode. Idx_train affects
+                      various nested methods:
+                      - get_dates_from_config(): If idx_train = True, the date range between
+                        first_ & last_day_calc is returned and the training window otherwise.
+                      - load_inputs(): If idx_train = True, the label timeseries will be omitted
+                        from loading, otherwise the label is loaded to facilitate benchmarking.
+                      - scale_with_minmax(): If idx_train = True, scaling factors are calculated and
+                        newly saved. If false, the factors are merely reloaded from the existing pkl file.
+    :param date_dict: (dict) Dictionary containing values for keys 'date_from' and 'date_to'. Is used to override
+                      time range specified in config.json and thus allows for custom training windows.
+
+    :return: Trained random forest model, both directly returned as object and saved as .pkl file together
+             with feature order of training parameters.
+    """
     # Get Config Parameters
     target_var = get_params_from_config(function='get_label', str_model=str_model)['label']
     hyperparameters = get_params_from_config(function='build_ensemble', str_model=str_model)['hyperparameters']
@@ -406,7 +423,25 @@ def predict_lstm(str_model:str, idx_train:bool=False, date_dict:dict=None, write
 
 
 def predict_lstm_daywise(str_model:str, idx_train:bool=False, writeDWH:bool=False):
+    """
+    Predict LSTM model day by day, allowing the prediction to iteratively update the daily means of the model.
+    This function is a trial method, whose insights have been used to inform the creation of other functions in
+    this module.
 
+    :param str_model: (str) Model name as specified under 'models' section in json config.
+    :param idx_train: (bool) Boolean indicator for training / prediction mode. Idx_train affects
+                      various nested methods:
+                      - get_dates_from_config(): If idx_train = True, the date range between
+                        first_ & last_day_calc is returned and the training window otherwise.
+                      - load_inputs(): If idx_train = True, the label timeseries will be omitted
+                        from loading, otherwise the label is loaded to facilitate benchmarking.
+                      - scale_with_minmax(): If idx_train = True, scaling factors are calculated and
+                        newly saved. If false, the factors are merely reloaded from the existing pkl file.
+    :param writeDWH: (bool) Boolean indicator whether to write the predictions to the Belvis Data Warehouse.
+                     Default is False.
+
+    :return y_pred_series: (pd.Series) Iteratively predicted time series for LSTM model.
+    """
     # Instantiate Objects
     lstm = simpleLSTM()
 
@@ -503,6 +538,30 @@ def predict_lstm_daywise(str_model:str, idx_train:bool=False, writeDWH:bool=Fals
 
 def forecast_svr(str_model:str, idx_train:bool=False, date_dict:dict=None, writeDWH:bool=False,
                  replace_data:dict=None): # different naming due to svr.predict_svr
+    """
+    Predict time series using pre-trained SVR models. Due to SVR's single-output property, the prediction hinges on
+    n_timestep calculated models and their merged predictions.
+
+    :param str_model: (str) Model name as specified under 'models' section in json config.
+    :param idx_train: (bool) Boolean indicator for training / prediction mode. Idx_train affects
+                      various nested methods:
+                      - get_dates_from_config(): If idx_train = True, the date range between
+                        first_ & last_day_calc is returned and the training window otherwise.
+                      - load_inputs(): If idx_train = True, the label timeseries will be omitted
+                        from loading, otherwise the label is loaded to facilitate benchmarking.
+                      - scale_with_minmax(): If idx_train = True, scaling factors are calculated and
+                        newly saved. If false, the factors are merely reloaded from the existing pkl file.
+    :param date_dict: (dict) Dictionary containing 'date_from' and 'date_to' variables either as string or
+                      datetime object. Default is None, in which case the dates are retrieved from the config.
+    :param writeDWH: (bool) Boolean indicator for export to Data Warehouse. Defaults to False. If True, CSV file is
+                     generated and uploaded to Belvis import folder.
+    :param replace_data: (pd.Series / pd.DataFrame / dict) Iterable object containing replacement subsets, with which
+                         existing data can be overridden, e.g. to iteratively insert 1d-mean values for multi-day
+                         predictions.
+
+    :return y_pred_rescaled: (pd.Series) Predicted time series from SVR model as object and, if applicable, CSV export
+                             to Belvis import folder.
+    """
 
     # Get Config Parameters
     label_name = get_params_from_config(function='get_label', str_model=str_model)['label']
@@ -566,7 +625,27 @@ def forecast_svr(str_model:str, idx_train:bool=False, date_dict:dict=None, write
 
 
 def predict_ensemble(str_model:str, idx_train=False, date_dict:dict=None, writeDWH:bool=False):
+    """
+    Predict time series using pre-calculated child model predictions as input for the meta random forest regressor.
+    Depending on the configuration, the model is expanded by further exogenous variables.
 
+    :param str_model: (str) Model name as specified under 'models' section in json config.
+    :param idx_train: (bool) Boolean indicator for training / prediction mode. Idx_train affects
+                      various nested methods:
+                      - get_dates_from_config(): If idx_train = True, the date range between
+                        first_ & last_day_calc is returned and the training window otherwise.
+                      - load_inputs(): If idx_train = True, the label timeseries will be omitted
+                        from loading, otherwise the label is loaded to facilitate benchmarking.
+                      - scale_with_minmax(): If idx_train = True, scaling factors are calculated and
+                        newly saved. If false, the factors are merely reloaded from the existing pkl file.
+    :param date_dict: (dict) Dictionary containing 'date_from' and 'date_to' variables either as string or
+                      datetime object. Default is None, in which case the dates are retrieved from the config.
+    :param writeDWH: (bool) Boolean indicator for export to Data Warehouse. Defaults to False. If True, CSV file is
+                     generated and uploaded to Belvis import folder.
+
+    :return ts_ypred: (pd.Series) Predicted time series as object and, if applicable and after creation of Ensemble time
+                      series in Belvis, as CSV export to Belvis import folder.
+    """
     # Load model & feature_order
     with open(f'models//attributes//{str_model}_trained_model.pkl', 'rb') as file:
         trained_model = pickle.load(file)
@@ -616,12 +695,13 @@ def predict_ensemble(str_model:str, idx_train=False, date_dict:dict=None, writeD
 
 def predict_zufluss(str_inlet:str, writeDWH:bool=False):
     """
-    Predict ensemble model by iteratively making a forecast for LSTM, SVR and RNN for each prediction day and passing
+    Predict ensemble model by iteratively forecasting an LSTM, SVR and RNN model for each prediction day, then passing
     these outputs to the ensemble model as inputs. If desired, function directly exports predictions of LSTM, SVR and
     daily prediction means to Belvis Data Warehouse.
 
-    :param str_inlet: (str)
-    :param writeDWH: (bool)
+    :param str_inlet: (str) Inlet name, is used for referencing in config.json and as identifier for Belvis import.
+    :param writeDWH: (bool) Boolean indicator for export to Data Warehouse. Defaults to False. If True, CSV file is
+                     generated and uploaded to Belvis import folder.
 
     :return: (pd.Series) Ensemble model prediction time series over the time range specified in config.json.
     """
